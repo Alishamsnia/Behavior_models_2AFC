@@ -533,7 +533,11 @@ def fit_m3_single_initialization(
                 with torch.no_grad():
                     fresh_validation = _objective(validation, raw, registry, "validation")
                 training_evaluations += 1
-                fresh_value = float(fresh.loss)
+                # fresh.loss still requires grad here (its backward() above
+                # already consumed the graph to populate raw.grad); detach
+                # before extracting the plain float so this doesn't warn
+                # about discarding a live autograd graph it no longer has.
+                fresh_value = float(fresh.loss.detach())
                 improved = fresh_value < best_train - registry.convergence.meaningful_improvement_tolerance
                 if fresh_value < best_train:
                     best_raw = raw.detach().clone()
