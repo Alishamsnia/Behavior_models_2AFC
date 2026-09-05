@@ -611,10 +611,18 @@ def fit_single_initialization(
                 fresh_train_value
                 < best_train - registry.convergence.meaningful_improvement_tolerance
             )
-            if improved:
+            # Checkpoint on ANY strict improvement, independent of the
+            # meaningful-improvement tolerance used for patience below. Near
+            # a genuine optimum, NLL stops improving by more than that
+            # tolerance well before the gradient norm reaches its own
+            # (unrelated) tolerance, so gating the checkpoint on `improved`
+            # can restore a stale, larger-gradient point over a later point
+            # that is both lower-NLL and much closer to a stationary point.
+            if fresh_train_value < best_train:
                 best_train = fresh_train_value
                 best_raw = raw.detach().clone()
                 best_epoch = epoch
+            if improved:
                 epochs_without_improvement = 0
             else:
                 epochs_without_improvement += 1
@@ -1064,29 +1072,39 @@ def fit_single_initialization_with_strategy(
 
                 optimizer.step(closure)
                 lbfgs_steps += 1
-                if (
-                    first_closure_loss is None
-                    or first_closure_gradient_norm is None
-                    or raw.grad is None
-                    or not bool(torch.all(torch.isfinite(raw.grad)))
-                ):
+                if first_closure_loss is None or first_closure_gradient_norm is None:
                     raise RuntimeError(
-                        "L-BFGS did not return finite first/final closure diagnostics"
+                        "L-BFGS did not return finite first closure diagnostics"
                     )
-                gradient_norm_after_step = _gradient_norm(raw)
                 if not bool(torch.all(torch.isfinite(raw)).detach().cpu()):
                     raise FloatingPointError("L-BFGS produced nonfinite raw parameters")
 
+                # Recompute the gradient fresh at the parameters L-BFGS
+                # actually accepted. `raw.grad` right after `.step()` can
+                # still hold the gradient from an earlier trial point
+                # evaluated inside the strong-Wolfe line search rather than
+                # the point the optimizer settled on (PyTorch's LBFGS only
+                # restores parameter *data* between line-search trials, not
+                # the `.grad` attribute), so reading it directly here can
+                # misreport both the logged gradient norm and the
+                # convergence-check decision below.
+                optimizer.zero_grad(set_to_none=True)
+                fresh_train = _objective(train, raw, registry, role="train")
+                training_evaluations += 1
+                fresh_train.loss.backward()
+                if raw.grad is None or not bool(torch.all(torch.isfinite(raw.grad))):
+                    raise FloatingPointError(
+                        "L-BFGS post-step gradient is missing/nonfinite"
+                    )
+                gradient_norm_after_step = _gradient_norm(raw)
+                fresh_train_value = float(fresh_train.loss.detach().cpu())
                 with torch.no_grad():
-                    fresh_train = _objective(train, raw, registry, role="train")
-                    training_evaluations += 1
                     fresh_validation = _objective(
                         validation,
                         raw,
                         registry,
                         role="validation",
                     )
-                fresh_train_value = float(fresh_train.loss.detach().cpu())
                 validation_value = float(fresh_validation.loss.detach().cpu())
                 if not np.isfinite(fresh_train_value) or not np.isfinite(
                     validation_value
@@ -1099,11 +1117,15 @@ def fit_single_initialization_with_strategy(
                     < best_train - registry.convergence.meaningful_improvement_tolerance
                 )
                 global_epoch = global_offset + phase_step
-                if improved:
+                # See the matching Adam-phase comment: checkpoint on any
+                # strict improvement, and reserve the tolerance-gated
+                # `improved` flag for the patience counter only.
+                if fresh_train_value < best_train:
                     best_train = fresh_train_value
                     best_raw = raw.detach().clone()
                     best_epoch = global_epoch
                     best_phase = "lbfgs"
+                if improved:
                     epochs_without_improvement = 0
                 else:
                     epochs_without_improvement += 1

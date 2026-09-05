@@ -394,11 +394,16 @@ def fit_m2_dynamic_block_length_single_initialization(
                 training_evaluations += 1
                 fresh_value = float(fresh.loss)
                 improved = fresh_value < best_train - registry.convergence.meaningful_improvement_tolerance
-                if improved:
+                # Checkpoint on any strict improvement; the tolerance-gated
+                # `improved` flag is reserved for the patience counter only
+                # (see the L-BFGS phase for why conflating the two can turn
+                # a converged run into a reported non-convergence).
+                if fresh_value < best_train:
                     best_raw = raw.detach().clone()
                     best_train = fresh_value
                     best_step = global_step
                     best_phase = "adam"
+                if improved:
                     epochs_without_improvement = 0
                 else:
                     epochs_without_improvement += 1
@@ -462,18 +467,32 @@ def fit_m2_dynamic_block_length_single_initialization(
                 global_step += 1
                 if not bool(torch.all(torch.isfinite(raw))):
                     raise FloatingPointError("L-BFGS produced nonfinite M2_dynamic_block_length parameters")
+                # Recompute the gradient fresh at the parameters L-BFGS
+                # actually accepted -- raw.grad right after .step() can
+                # still belong to an earlier line-search trial point rather
+                # than the point actually settled on (PyTorch's LBFGS only
+                # restores parameter data between trials, not .grad), which
+                # would otherwise corrupt both the logged gradient norm and
+                # the convergence-check decision below.
+                optimizer.zero_grad(set_to_none=True)
+                fresh = _objective(training, raw, registry, "train")
+                fresh.loss.backward()
+                if raw.grad is None or not bool(torch.all(torch.isfinite(raw.grad))):
+                    raise FloatingPointError(
+                        "Nonfinite M2_dynamic_block_length L-BFGS post-step gradient"
+                    )
+                gradient_norm = _current_gradient_norm(raw)
                 with torch.no_grad():
-                    fresh = _objective(training, raw, registry, "train")
                     fresh_validation = _objective(validation, raw, registry, "validation")
                 training_evaluations += 1
-                gradient_norm = _current_gradient_norm(raw)
                 fresh_value = float(fresh.loss)
                 improved = fresh_value < best_train - registry.convergence.meaningful_improvement_tolerance
-                if improved:
+                if fresh_value < best_train:
                     best_raw = raw.detach().clone()
                     best_train = fresh_value
                     best_step = global_step
                     best_phase = "lbfgs"
+                if improved:
                     epochs_without_improvement = 0
                 else:
                     epochs_without_improvement += 1
