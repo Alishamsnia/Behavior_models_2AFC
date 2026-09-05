@@ -86,6 +86,19 @@ def subject_winner_assignments(
 ) -> pd.DataFrame:
     """One row per comparable session for `subject`: which model won, plus
     everything needed to filter that subject's raw trial CSV down to it.
+
+    Interpretation caveat: `winning_model` here comes from each session's
+    held-out choice likelihood (`single_session_win_counts_per_session.csv`,
+    an argmin over models' heldout mean NLL). Any downstream behavioral
+    analysis that groups sessions by this winner and then compares those
+    groups' behavior (lick rates, learning curves, psychometric slopes,
+    etc.) is therefore analyzing a winner-selected sample, not an
+    independent replication: the same held-out choices used to pick the
+    winner are drawn from the session being described, so a difference
+    between winner groups can partly reflect that selection rather than a
+    genuine behavioral difference between mice/sessions the models
+    happened to fit best. Treat such comparisons as descriptive, not as
+    independent validation of a model's account of behavior.
     """
     win_table_path = (
         MODEL_COMPARISON_ROOT / subject / "tables" / "single_session_win_counts_per_session.csv"

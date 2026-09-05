@@ -264,6 +264,17 @@ def build_report(mouse_id: str) -> str:
         "summaries, not independent-replicate population inference. Figure 03 uses the same "
         "common session IDs in both panels.\n"
     )
+    lines.append(
+        "**The M0-M1 contrast specifically is not a clean test of hidden-block inference "
+        "alone.** M0's decision rule uses only its positive-root solver (discarding the "
+        "negative-root decision tail), while M1 integrates the full quadratic log-odds "
+        "region (linear, two-root, double-root, and no-root regimes; see "
+        "`docs/models/M1_hmm_true_v1.md`). Even under a neutral, uninformative prior the two "
+        "solvers need not agree, so an M0->M1 improvement reflects both the added hazard-based "
+        "block inference AND the more complete decision rule -- it cannot be attributed to "
+        "hidden-block inference alone from this contrast. Isolating that would require an "
+        "ablation giving M0 the same general quadratic solver M1-M4 use.\n"
+    )
     _append_adjacent_results(
         lines, sw_paired_pairwise, "split_role",
         [("train", "Sliding train"), ("validation", "Sliding validation"), ("test", "Sliding test")],

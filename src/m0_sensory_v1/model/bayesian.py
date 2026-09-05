@@ -84,6 +84,31 @@ def category_variances(
     :math:`\mu_k` and :math:`\tau_k^2` are fixed real-data task quantities;
     :math:`w` and :math:`s_0` are pooled mouse-level fitted parameters.
 
+    Known approximation, not a bug
+    -------------------------------
+    If the measurement model :math:`\operatorname{Var}(X\mid S)=wS^2+s_0^2`
+    is read literally as a hierarchical generative model -- :math:`S` itself
+    drawn from category :math:`k` with mean :math:`\mu_k` and variance
+    :math:`\tau_k^2`, then :math:`X` measured given that :math:`S` -- the
+    law of total variance gives the exact category-conditioned variance
+
+    .. math::
+
+       \operatorname{Var}(X\mid C=k) = E[\operatorname{Var}(X\mid S)]
+           + \operatorname{Var}(E[X\mid S])
+         = w(\tau_k^2+\mu_k^2) + s_0^2 + \tau_k^2
+         = (1+w)\tau_k^2 + w\mu_k^2 + s_0^2,
+
+    which has an extra :math:`w\tau_k^2` term the registered :math:`v_k`
+    above omits. This is the model's registered, intentional approximation
+    (not derived here as the exact hierarchical variance), presumably
+    chosen because :math:`\tau_k^2` is an empirical, already-pooled task
+    quantity rather than an explicit per-trial latent :math:`S` in this
+    model's own causal structure. Whether the omitted :math:`w\tau_k^2`
+    term is material depends on the fitted :math:`w` and each category's
+    :math:`\tau_k^2/\mu_k^2` ratio -- check against this model's own
+    fitted values before assuming it is negligible.
+
     Input units and shapes
     ----------------------
     Means and ``s0`` are seconds; variances are seconds squared. M0 fitting
