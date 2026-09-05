@@ -69,6 +69,31 @@ MODEL_SPECS: dict[str, ModelSpec] = {
             ),
             "#CC79A7",
         ),
+        # The two dynamic-block-length variants are a separate, non-nested
+        # branch (M1 + a run-length-varying hazard; M2 + the same) rather
+        # than members of the M0->M1->M2->M3->M4 chain that MODEL_ORDER
+        # represents -- they are deliberately NOT added to MODEL_ORDER.
+        # Folding them into the nested AIC/BIC/winner-count/figure machinery
+        # below requires first deciding how nesting and delta-IC comparisons
+        # should work across two branches (e.g. is M1 <= M1_dynamic a valid
+        # LRT pair alongside M1 <= M2? is M1_dynamic comparable to M2 at
+        # all?) -- a modeling decision, not a wiring one. Registering their
+        # metadata here (matching every other model) at least makes them
+        # first-class entries any comparison code CAN look up by model_id
+        # (color, label, parameter count) once that decision is made and
+        # results exist for both (currently: M1_dynamic_block_length_v1 has
+        # sliding-window but no single-session results; M2_dynamic_block_length_v1
+        # has neither).
+        ModelSpec(
+            "M1_dynamic", "M1_dynamic_block_length_v1", "M1 dynamic block length",
+            ("w", "s0", "ell_short", "ell_long", "kappa", "ah", "bh"),
+            "#56B4E9",
+        ),
+        ModelSpec(
+            "M2_dynamic", "M2_dynamic_block_length_v1", "M2 dynamic block length",
+            ("w", "s0", "ell_short", "ell_long", "kappa", "ah", "delta0", "bh"),
+            "#F0E442",
+        ),
     ]
 }
 

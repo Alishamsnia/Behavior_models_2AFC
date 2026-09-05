@@ -81,6 +81,22 @@ def _metric_rows(unit_col: str, units: list, roles: list[str]) -> pd.DataFrame:
 
 
 class ModelComparisonPostAnalysisTests(unittest.TestCase):
+    def test_dynamic_block_length_models_are_registered_but_not_in_main_comparison(self) -> None:
+        """The two dynamic-block-length variants should be first-class,
+        look-up-able ModelSpec entries (so any code CAN reference them by
+        model_id) without being folded into MODEL_ORDER's nested M0-M4
+        comparison family -- that requires a modeling decision (how nesting
+        and delta-IC work across two branches), not just registration."""
+        for model_id, dir_name, extra_param_count in (
+            ("M1_dynamic", "M1_dynamic_block_length_v1", 2),  # +ah, +bh
+            ("M2_dynamic", "M2_dynamic_block_length_v1", 3),  # +ah, +delta0, +bh
+        ):
+            self.assertIn(model_id, MODEL_SPECS)
+            spec = MODEL_SPECS[model_id]
+            self.assertEqual(spec.dir_name, dir_name)
+            self.assertEqual(len(spec.param_names), 5 + extra_param_count)
+            self.assertNotIn(model_id, MODEL_ORDER)
+
     def test_all_figure_registry_entries_dispatch_and_read_declared_tables(self) -> None:
         renderer_names = (
             "fig_global_and_detailed_nll",
