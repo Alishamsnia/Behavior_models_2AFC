@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import cached_property
 from typing import Protocol, runtime_checkable
 
 import torch
@@ -104,7 +105,7 @@ class CappedTailHSMMPriorStateProvider:
         if not 0.0 <= self.first_long_probability <= 1.0:
             raise ValueError("first_long_probability must lie in [0,1]")
 
-    @property
+    @cached_property
     def run_lengths(self) -> torch.Tensor:
         return torch.arange(
             1,
@@ -113,15 +114,24 @@ class CappedTailHSMMPriorStateProvider:
             device=self.parameters.w.device,
         )
 
-    @property
+    @cached_property
     def hazard_by_run_length(self) -> torch.Tensor:
-        """Return the fitted biased-block hazard ``h_B(r)``."""
+        """Return the fitted biased-block hazard ``h_B(r)``.
+
+        Cached rather than a plain property: this depends only on the fixed
+        ``ah``/``bh`` for one provider instance (frozen dataclass, one
+        instance per session evaluation -- see ``evaluate_m4_session``), but
+        ``transition()`` re-reads it on every trial via
+        ``capped_tail_hsmm_transition``. Without caching, that recomputes an
+        identical sigmoid over ``maximum_run_length`` elements once per
+        trial across every session, multistart, and rolling window.
+        """
 
         return self.parameters.hazard(
             self.run_lengths, center=self.run_length_center
         )
 
-    @property
+    @cached_property
     def state_hazard_by_run_length(self) -> torch.Tensor:
         """Return tied hazards in ``(N,S,L)`` row order."""
 

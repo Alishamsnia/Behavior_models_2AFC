@@ -31,7 +31,10 @@ from m4_hsmm_delta_v1.fit import fit_m4_all_initializations, fit_m4_single_initi
 from m4_hsmm_delta_v1.identifiability import evaluate_m4_dynamic_surface  # noqa: E402
 from m4_hsmm_delta_v1.m0_style_figures import generate_m4_m0_style_figures  # noqa: E402
 from m4_hsmm_delta_v1.parameters import decode_m4_raw_parameters, encode_m4_constrained_parameters  # noqa: E402
-from m4_hsmm_delta_v1.prior_state import ConstantHazardPriorStateProvider  # noqa: E402
+from m4_hsmm_delta_v1.prior_state import (  # noqa: E402
+    CappedTailHSMMPriorStateProvider,
+    ConstantHazardPriorStateProvider,
+)
 from m4_hsmm_delta_v1.recovery import M4_RECOVERY_BH_GRID, iter_registered_m4_recovery_grid  # noqa: E402
 from m4_hsmm_delta_v1.registry import load_m4_model_registry  # noqa: E402
 from m4_hsmm_delta_v1.session import (  # noqa: E402
@@ -380,6 +383,18 @@ class M4ModelTests(unittest.TestCase):
         self.assertGreater(distribution.duration_trials.max(), 5000)
         self.assertGreater(distribution.probability.sum(), 1 - 1e-11)
         self.assertTrue(distribution.uses_frozen_tail_hazard.iloc[-1])
+
+    def test_hazard_by_run_length_is_cached_not_recomputed_per_trial(self):
+        """transition() re-reads hazard_by_run_length on every trial; it
+        must be the identical cached tensor each time, not a fresh sigmoid
+        evaluation, since it depends only on this (frozen, one-per-session)
+        provider's fixed ah/bh."""
+        provider = CappedTailHSMMPriorStateProvider(parameters=self.parameters)
+        first = provider.hazard_by_run_length
+        second = provider.hazard_by_run_length
+        self.assertIs(first, second)
+        self.assertIs(provider.run_lengths, provider.run_lengths)
+        self.assertIs(provider.state_hazard_by_run_length, provider.state_hazard_by_run_length)
 
     def test_duration_summary_truncation_sensitivity_and_identifiability(self):
         distribution = build_m4_implied_duration_distribution(self.raw, self.registry)
