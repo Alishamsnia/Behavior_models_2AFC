@@ -364,6 +364,23 @@ class M4ModelTests(unittest.TestCase):
             self.assertTrue((output / "psychometrics_mouse_vs_model.png").is_file())
             self.assertTrue((output / "m4_m0_style_figure_manifest.json").is_file())
 
+    def test_low_hazard_duration_distribution_exceeds_default_cap_without_raising(self):
+        """A valid, low fitted hazard can require far more than 5000 trials
+        to reach the tail tolerance (survival decays as (1-h)^n, so small h
+        needs n ~ 27.6/h steps). The distribution builder must extend past
+        its default row-count cap analytically instead of raising on a
+        legitimate fit."""
+        low_hazard_constrained = torch.tensor(
+            (.03, .55, .04, .6, 1.4, -8.0, .9, .08, 1e-6), dtype=DTYPE
+        )
+        raw = encode_m4_constrained_parameters(low_hazard_constrained)
+        hazard_r23 = float(torch.sigmoid(low_hazard_constrained[5]))
+        self.assertLess(hazard_r23, 1e-3)
+        distribution = build_m4_implied_duration_distribution(raw, self.registry)
+        self.assertGreater(distribution.duration_trials.max(), 5000)
+        self.assertGreater(distribution.probability.sum(), 1 - 1e-11)
+        self.assertTrue(distribution.uses_frozen_tail_hazard.iloc[-1])
+
     def test_duration_summary_truncation_sensitivity_and_identifiability(self):
         distribution = build_m4_implied_duration_distribution(self.raw, self.registry)
         neutral_distribution = build_m4_implied_duration_distribution(

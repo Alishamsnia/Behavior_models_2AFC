@@ -73,10 +73,14 @@ def build_m4_implied_duration_distribution(
         raise ValueError("remaining_probability_tolerance must lie in (0,1)")
     curve = build_m4_hazard_curve(raw_parameters, registry)
     hazards = curve[f"{block_state}_hazard"].to_numpy(float)
+    cap = registry.maximum_represented_run_length
     survival = 1.0
     rows: list[dict[str, float | int | bool | str]] = []
-    for duration in range(1, maximum_duration + 1):
-        index = min(duration, registry.maximum_represented_run_length) - 1
+    duration = 0
+    effective_maximum_duration = maximum_duration
+    while duration < effective_maximum_duration:
+        duration += 1
+        index = min(duration, cap) - 1
         hazard = float(hazards[index])
         mass = survival * hazard
         rows.append({
@@ -85,11 +89,30 @@ def build_m4_implied_duration_distribution(
             "block_state": block_state,
             "probability": mass,
             "survival_probability_at_start": survival,
-            "uses_frozen_tail_hazard": duration >= registry.maximum_represented_run_length,
+            "uses_frozen_tail_hazard": duration >= cap,
         })
         survival *= 1.0 - hazard
         if survival <= remaining_probability_tolerance:
             break
+        if duration >= cap and duration == effective_maximum_duration:
+            # From here on the hazard is frozen at a single constant value
+            # (index has saturated at cap-1), so the remaining tail is
+            # exactly geometric. Solve analytically for how many more
+            # trials are needed to reach the tolerance instead of failing a
+            # legitimate low-hazard fit against an arbitrary fixed row cap
+            # -- a valid fitted hazard can require far more than the
+            # default 5000 trials to reach an arbitrarily small tolerance.
+            if hazard <= 0.0:
+                raise ValueError(
+                    "Frozen tail hazard must be positive to reach any tail tolerance"
+                )
+            additional_steps = int(
+                np.ceil(
+                    np.log(remaining_probability_tolerance / survival)
+                    / np.log(1.0 - hazard)
+                )
+            )
+            effective_maximum_duration = duration + max(1, additional_steps)
     if survival > remaining_probability_tolerance:
         raise RuntimeError("Duration distribution did not reach the requested tail tolerance")
     result = pd.DataFrame(rows)
