@@ -25,7 +25,11 @@ if str(SOURCE_ROOT) not in sys.path:
 if str(SCRIPTS_ROOT) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_ROOT))
 
-from _resume_staleness import result_registry_is_stale  # noqa: E402
+from _resume_staleness import (  # noqa: E402
+    manifest_fingerprint,
+    manifest_fingerprint_is_stale,
+    result_registry_is_stale,
+)
 
 from m0_sensory_v1.m1_analysis import (  # noqa: E402
     build_m1_trial_predictions,
@@ -257,12 +261,14 @@ def _fit_window(prepared, window, registry, args, root: Path) -> dict[str, Any]:
     previous_result = (
         json.loads(result_path.read_text(encoding="utf-8")) if result_path.is_file() else None
     )
-    registry_stale = result_registry_is_stale(previous_result, registry)
+    registry_stale = result_registry_is_stale(
+        previous_result, registry
+    ) or manifest_fingerprint_is_stale(previous_manifest, registry, SOURCE_ROOT)
     if registry_stale:
         print(
             f"window={window.window_id:03d} status=resume_stale_registry "
-            "(config/initialization/split checksum changed since this fit was "
-            "saved -- refitting instead of resuming)",
+            "(config/initialization/split checksum or source code changed "
+            "since this fit was saved -- refitting instead of resuming)",
             flush=True,
         )
     if (
@@ -337,6 +343,7 @@ def _fit_window(prepared, window, registry, args, root: Path) -> dict[str, Any]:
         "experiment_id": EXPERIMENT_ID,
         "workflow": args.workflow,
         "status": "complete",
+        "resume_fingerprint": manifest_fingerprint(registry, SOURCE_ROOT),
         "model_id": registry.model_id,
         "mouse_id": prepared.mouse_id,
         **window.as_dict(),
@@ -449,12 +456,15 @@ def _single_session_job(payload: dict[str, Any]) -> dict[str, Any]:
     previous_result = (
         json.loads(result_path.read_text(encoding="utf-8")) if result_path.is_file() else None
     )
+    session_stale = result_registry_is_stale(
+        previous_result, registry
+    ) or manifest_fingerprint_is_stale(previous_manifest, registry, SOURCE_ROOT)
     if (
         payload["resume"]
         and previous_result is not None
         and previous_manifest.get("status") == "complete"
         and figures_current
-        and not result_registry_is_stale(previous_result, registry)
+        and not session_stale
     ):
         return {"session_id": payload["session_id"], "status": "resume_skip"}
 
@@ -483,9 +493,7 @@ def _single_session_job(payload: dict[str, Any]) -> dict[str, Any]:
     experimental_registry = replace(registry, initializations=(initialization,))
     started = time.monotonic()
     resumed_postfit = (
-        payload["resume"]
-        and previous_result is not None
-        and not result_registry_is_stale(previous_result, registry)
+        payload["resume"] and previous_result is not None and not session_stale
     )
     if resumed_postfit:
         run_record = previous_result
@@ -548,6 +556,7 @@ def _single_session_job(payload: dict[str, Any]) -> dict[str, Any]:
         "experiment_id": EXPERIMENT_ID,
         "workflow": payload["workflow"],
         "status": "complete",
+        "resume_fingerprint": manifest_fingerprint(registry, SOURCE_ROOT),
         "model_id": registry.model_id,
         "mouse_id": payload["mouse_id"],
         "session_id": payload["session_id"],
