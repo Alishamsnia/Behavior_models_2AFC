@@ -301,6 +301,29 @@ class M3ModelTests(unittest.TestCase):
         self.assertEqual(run.validation_session_ids, ("validation",))
         json.dumps(run.as_dict())
 
+    def test_evaluated_checks_must_match_declared_registry_checks(self) -> None:
+        """M3's fit.py evaluates 8 checks (M2's inherited 7 plus
+        projection_activation_acceptable) but registry.convergence.required_checks
+        only ever reports the inherited 7 (M3's own config doesn't override
+        it). fit_m3_single_initialization validates the two against a
+        documented expected set internally; this proves that validation is
+        actually wired by forcing a real mismatch."""
+        tampered_convergence = replace(
+            self.registry.convergence,
+            required_checks=self.registry.convergence.required_checks + ("made_up_check",),
+        )
+        tampered_registry = replace(self.registry, convergence=tampered_convergence)
+        with self.assertRaisesRegex(ValueError, "do not exactly match"):
+            fit_m3_single_initialization(
+                [_session(session_id="train")],
+                [_session(session_id="validation", role="validation")],
+                tampered_registry,
+                tampered_registry.initializations[0],
+                optimizer_strategy="adam",
+                max_epochs_override=1,
+                allow_short_convergence_budget=True,
+            )
+
     def test_adam_pure_lbfgs_and_hybrid_match_m2_strategy_contract(self):
         training = [_session(session_id="train")]
         validation = [_session(session_id="validation", role="validation")]

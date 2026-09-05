@@ -654,6 +654,28 @@ def fit_m4_single_initialization(
         ("projection_activation_acceptable", projection_acceptable),
         ("tail_occupancy_acceptable", tail_occupancy_acceptable),
     ))
+    # M4's `convergence` property is a bare passthrough to
+    # source_m3_registry.convergence (see registry.py), so
+    # registry.convergence.required_checks reports M3's declaration (itself
+    # inherited unchanged from M2: 7 checks) even though M4's fit loop
+    # evaluates ten. See the matching comment in m3_hmm_delta_v1/fit.py for
+    # why this is validated against the inherited declaration plus M4's own
+    # documented additions rather than by editing the frozen, checksummed
+    # config chain (M3's config, M4's pinned reference to it, and both
+    # release audits all checksum the affected files).
+    declared_names = set(registry.convergence.required_checks) | {
+        "no_optimizer_runtime_errors",
+        "projection_activation_acceptable",
+        "tail_occupancy_acceptable",
+    }
+    evaluated_names = {name for name, _ in checks}
+    if evaluated_names != declared_names:
+        raise ValueError(
+            "M4 evaluated convergence checks "
+            f"{sorted(evaluated_names)} do not exactly match the expected set "
+            f"{sorted(declared_names)} (registry.convergence.required_checks "
+            "plus M4's own optimizer-runtime, projection, and tail gates)"
+        )
     converged = all(value for _, value in checks)
     if termination == "maximum_epochs_reached":
         termination = "maximum_epochs_convergence_checks_passed" if converged else "maximum_epochs_without_convergence"

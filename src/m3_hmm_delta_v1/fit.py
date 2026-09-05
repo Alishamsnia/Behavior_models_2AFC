@@ -611,6 +611,31 @@ def fit_m3_single_initialization(
         ("no_probability_normalization_errors", exception_message is None),
         ("projection_activation_acceptable", projection_acceptable),
     ))
+    # registry.convergence.required_checks is inherited unchanged from M2
+    # (7 checks; M3 adds no override of its own -- see config/m3_hmm_delta_v1.json's
+    # "extends": "m2_hmm_static_v1.json"), but M3's fit loop evaluates an
+    # eighth check (projection_activation_acceptable) beyond that inherited
+    # declaration. M1_dynamic_block_length/M2_dynamic_block_length validate
+    # evaluated-vs-declared directly against their own registry field; M3
+    # cannot do that without also changing what registry.convergence.required_checks
+    # reports (a frozen, checksummed config contract also referenced by M4's
+    # pinned dependency and both models' release audits) for a purpose beyond
+    # this internal consistency check. Validating against the inherited
+    # declaration plus M3's own documented addition catches the same class of
+    # drift (an evaluated check silently added, removed, or renamed without
+    # anyone verifying the two lists still agree) without touching that
+    # contract.
+    declared_names = set(registry.convergence.required_checks) | {
+        "projection_activation_acceptable",
+    }
+    evaluated_names = {name for name, _ in checks}
+    if evaluated_names != declared_names:
+        raise ValueError(
+            "M3 evaluated convergence checks "
+            f"{sorted(evaluated_names)} do not exactly match the expected set "
+            f"{sorted(declared_names)} (registry.convergence.required_checks "
+            "plus M3's own projection gate)"
+        )
     converged = all(value for _, value in checks)
     if termination == "maximum_epochs_reached":
         termination = "maximum_epochs_convergence_checks_passed" if converged else "maximum_epochs_without_convergence"

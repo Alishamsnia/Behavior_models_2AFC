@@ -225,6 +225,28 @@ class M4ModelTests(unittest.TestCase):
         self.assertFalse(checks["tail_occupancy_acceptable"])
         self.assertFalse(run.converged)
 
+    def test_evaluated_checks_must_match_declared_registry_checks(self) -> None:
+        """M4's `convergence` property passes through source_m3_registry's
+        (itself M2-inherited, 7-check) declaration unchanged, but M4's fit.py
+        evaluates ten checks. fit_m4_single_initialization validates the two
+        against a documented expected set internally; this proves that
+        validation is actually wired by forcing a real mismatch."""
+        tampered_convergence = replace(
+            self.registry.convergence,
+            required_checks=self.registry.convergence.required_checks + ("made_up_check",),
+        )
+        tampered_source_m3 = replace(
+            self.registry.source_m3_registry, convergence=tampered_convergence
+        )
+        tampered_registry = replace(self.registry, source_m3_registry=tampered_source_m3)
+        with self.assertRaisesRegex(ValueError, "do not exactly match"):
+            fit_m4_single_initialization(
+                [_session()], [_session(session_id="validation", role="validation")],
+                tampered_registry, tampered_registry.initializations[0],
+                optimizer_strategy="adam", max_epochs_override=1,
+                allow_short_convergence_budget=True,
+            )
+
     def test_parallel_multistart_matches_sequential_reference(self):
         registry = replace(self.registry, initializations=self.registry.initializations[:2])
         training = [_session(session_id="train")]
