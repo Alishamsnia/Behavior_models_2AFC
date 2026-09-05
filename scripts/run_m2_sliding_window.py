@@ -19,9 +19,13 @@ import torch
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 SOURCE_ROOT = REPOSITORY_ROOT / "src"
+SCRIPTS_ROOT = Path(__file__).resolve().parent
 if str(SOURCE_ROOT) not in sys.path:
     sys.path.insert(0, str(SOURCE_ROOT))
+if str(SCRIPTS_ROOT) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_ROOT))
 
+from _resume_staleness import result_registry_is_stale  # noqa: E402
 from m0_sensory_v1.m2_analysis import (  # noqa: E402
     build_m2_trial_predictions,
     save_m2_analysis_outputs,
@@ -295,22 +299,34 @@ def _fit_window(prepared, window, registry, args, root: Path) -> dict[str, Any]:
     identifiability_current = _identifiability_is_current(
         output, args.identifiability_grid_points
     )
+    previous_result = (
+        json.loads(result_path.read_text(encoding="utf-8")) if result_path.is_file() else None
+    )
+    registry_stale = result_registry_is_stale(previous_result, registry)
+    if registry_stale:
+        print(
+            f"window={window.window_id:03d} status=resume_stale_registry "
+            "(config/initialization/split checksum changed since this fit was "
+            "saved -- refitting instead of resuming)",
+            flush=True,
+        )
     if (
         args.resume
-        and result_path.is_file()
+        and previous_result is not None
         and previous_manifest.get("status") == "complete"
         and figures_current
         and identifiability_current
+        and not registry_stale
     ):
         print(f"window={window.window_id:03d} status=resume_skip", flush=True)
-        return json.loads(result_path.read_text(encoding="utf-8"))
+        return previous_result
 
     output.mkdir(parents=True, exist_ok=True)
     started = time.monotonic()
-    resumed_postfit = args.resume and result_path.is_file()
+    resumed_postfit = args.resume and previous_result is not None and not registry_stale
     if resumed_postfit:
         print(f"window={window.window_id:03d} status=resume_postfit", flush=True)
-        summary = json.loads(result_path.read_text(encoding="utf-8"))
+        summary = previous_result
     else:
         train = _sessions(prepared, window.training_session_ids, "train", rolling_scope)
         validation = _sessions(
@@ -500,12 +516,16 @@ def _single_session_job(payload: dict[str, Any]) -> dict[str, Any]:
     identifiability_current = _identifiability_is_current(
         output, int(args["identifiability_grid_points"])
     )
+    previous_result = (
+        json.loads(result_path.read_text(encoding="utf-8")) if result_path.is_file() else None
+    )
     if (
         payload["resume"]
-        and result_path.is_file()
+        and previous_result is not None
         and previous_manifest.get("status") == "complete"
         and figures_current
         and identifiability_current
+        and not result_registry_is_stale(previous_result, registry)
     ):
         return {"session_id": payload["session_id"], "status": "resume_skip"}
 

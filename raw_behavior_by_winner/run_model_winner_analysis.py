@@ -21,6 +21,7 @@ results_raw_behavior_by_winner/.
 from __future__ import annotations
 
 import argparse
+from hashlib import sha256
 import json
 import os
 import sys
@@ -208,19 +209,42 @@ def run_model(model_id: str, input_manifest: dict, notebooks: list[str], timeout
     _install_local_kernelspec(results_dir)
     pooled_path = Path(input_manifest["pooled_csv"])
     subjects = input_manifest["pooled_subjects"]
+    # A notebook's pooled input CSV is rebuilt from the current winner
+    # assignments on every invocation (see build_model_inputs.run above), so
+    # a "completed" status from an earlier run does not by itself mean this
+    # run's input still matches -- winner assignments or upstream model
+    # results can have changed since. Hash the input the notebook would
+    # actually consume and only skip when both the status and that hash
+    # still match what was previously recorded.
+    current_input_checksum = sha256(pooled_path.read_bytes()).hexdigest()
     for notebook_name in notebooks:
-        if previous_runs.get(notebook_name, {}).get("status") == "completed":
-            print(f"SKIP {notebook_name} (already completed)", flush=True)
+        previous_record = previous_runs.get(notebook_name, {})
+        if (
+            previous_record.get("status") == "completed"
+            and previous_record.get("input_pooled_csv_sha256") == current_input_checksum
+        ):
+            print(f"SKIP {notebook_name} (already completed, input unchanged)", flush=True)
             continue
+        if previous_record.get("status") == "completed":
+            print(
+                f"RERUN {notebook_name} (input CSV changed since the completed run "
+                "was recorded)",
+                flush=True,
+            )
         try:
             record = execute_notebook(
                 notebook_name, results_dir, pooled_path, subjects, timeout=timeout,
             )
+            record["input_pooled_csv_sha256"] = current_input_checksum
         except Exception as exc:
             # Never abort the whole model run because one notebook's
             # execution setup itself failed (as opposed to a cell raising,
             # which execute_notebook already catches internally).
-            record = {"status": "failed", "error": f"{type(exc).__name__}: {exc}"}
+            record = {
+                "status": "failed",
+                "error": f"{type(exc).__name__}: {exc}",
+                "input_pooled_csv_sha256": current_input_checksum,
+            }
         run_manifest["notebook_runs"][notebook_name] = record
         run_manifest_path.write_text(json.dumps(run_manifest, indent=2) + "\n")
     return run_manifest

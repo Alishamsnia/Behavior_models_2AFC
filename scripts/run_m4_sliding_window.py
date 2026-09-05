@@ -20,9 +20,13 @@ import torch
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 SOURCE_ROOT = REPOSITORY_ROOT / "src"
+SCRIPTS_ROOT = Path(__file__).resolve().parent
 if str(SOURCE_ROOT) not in sys.path:
     sys.path.insert(0, str(SOURCE_ROOT))
+if str(SCRIPTS_ROOT) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_ROOT))
 
+from _resume_staleness import result_registry_is_stale  # noqa: E402
 from m0_sensory_v1.model import LBFGSSettings  # noqa: E402
 from m4_hsmm_delta_v1.analysis import (  # noqa: E402
     build_m4_hazard_curve,
@@ -380,16 +384,33 @@ def _fit_window(prepared, window, registry, args, root: Path) -> dict[str, Any]:
         and _optional_outputs_current(output, args)
         and previous.get("full_run_length_distributions_included") == requested_full
     )
-    if args.resume and result_path.is_file() and previous.get("status") == "complete" and current:
+    previous_result = (
+        json.loads(result_path.read_text(encoding="utf-8")) if result_path.is_file() else None
+    )
+    registry_stale = result_registry_is_stale(previous_result, registry)
+    if registry_stale:
+        print(
+            f"window={window.window_id:03d} status=resume_stale_registry "
+            "(config/initialization/split checksum changed since this fit was "
+            "saved -- refitting instead of resuming)",
+            flush=True,
+        )
+    if (
+        args.resume
+        and previous_result is not None
+        and previous.get("status") == "complete"
+        and current
+        and not registry_stale
+    ):
         print(f"window={window.window_id:03d} status=resume_skip", flush=True)
-        return json.loads(result_path.read_text(encoding="utf-8"))
+        return previous_result
 
     output.mkdir(parents=True, exist_ok=True)
     started = time.monotonic()
-    resumed_postfit = args.resume and result_path.is_file()
+    resumed_postfit = args.resume and previous_result is not None and not registry_stale
     if resumed_postfit:
         print(f"window={window.window_id:03d} status=resume_postfit", flush=True)
-        summary = json.loads(result_path.read_text(encoding="utf-8"))
+        summary = previous_result
     else:
         train = _sessions(prepared, window.training_session_ids, "train", rolling_scope)
         validation = _sessions(prepared, window.validation_session_ids, "validation", rolling_scope)
@@ -655,7 +676,11 @@ def _single_session_job(payload: dict[str, Any]) -> dict[str, Any]:
         and _optional_outputs_current(output, argparse.Namespace(**args))
         and previous.get("full_run_length_distributions_included") == requested_full
     )
-    if payload["resume"] and result_path.is_file():
+    previous_result = (
+        json.loads(result_path.read_text(encoding="utf-8")) if result_path.is_file() else None
+    )
+    registry_stale = result_registry_is_stale(previous_result, registry)
+    if payload["resume"] and previous_result is not None and not registry_stale:
         if previous.get("status") == "ineligible":
             return _single_session_result_from_manifest(
                 previous, status="resume_skip_ineligible"
@@ -700,9 +725,9 @@ def _single_session_job(payload: dict[str, Any]) -> dict[str, Any]:
     )
     experimental_registry = replace(registry, initializations=(initialization,))
     started = time.monotonic()
-    resumed_postfit = payload["resume"] and result_path.is_file()
+    resumed_postfit = payload["resume"] and previous_result is not None and not registry_stale
     if resumed_postfit:
-        run_record = json.loads(result_path.read_text(encoding="utf-8"))
+        run_record = previous_result
     else:
         train_session = m4_session_trials_from_frame(prefix, split_role="train")
         monitor_frame = prefix.copy()
