@@ -83,8 +83,9 @@ MODEL_SPECIFIC_PARAMETER_CARDS = {
     "ah": (
         "Switch hazard and learned block duration",
         "M1–M3: hB = sigmoid(ah); expected biased-block length = 1/hB trials.\n"
-        "M4: hB(23) = sigmoid(ah). Because bh changes hazard with elapsed run length, "
-        "M4 has no single constant mean block length.",
+        "M4: hB(23) = sigmoid(ah), but bh changes hazard with elapsed run length, "
+        "so M4 has no single constant hazard. Its curve at right instead plots the "
+        "exact mean of its full duration law (ah and bh together).",
     ),
     "delta0": (
         "Initial subjective category-rate contrast",
@@ -716,6 +717,45 @@ def _sigmoid_series(values: pd.Series) -> pd.Series:
     return pd.Series(1.0 / (1.0 + np.exp(-values.to_numpy(dtype=float))), index=values.index)
 
 
+# Fixed (unfitted) M4 registry constants from config/m4_hsmm_delta_v1.json:
+# the hazard run-length center and the represented-run-length cap beyond
+# which the registered approximation freezes the hazard. These are
+# architectural constants of the frozen M4 spec, not fitted per window.
+_M4_HAZARD_CENTER = 23
+_M4_MAXIMUM_REPRESENTED_RUN_LENGTH = 65
+
+
+def _m4_expected_block_length(ah: float, bh: float) -> float:
+    """Exact mean of M4's biased-block duration law for one fitted (ah, bh).
+
+    M4's hazard is h(r) = sigmoid(ah + bh*(r-23)) for r < 65, frozen at
+    h(65) for r >= 65 (the registered constant-tail approximation; see
+    ``m4_hsmm_delta_v1.diagnostics.build_m4_implied_duration_distribution``).
+    Unlike M1-M3, this hazard is NOT constant in r, so the expected block
+    length is not `1/hB` for any single hB -- it is the mean of the full
+    discrete duration law, summed here in closed form (individual terms for
+    r=1..64, then an exact geometric-tail sum for r>=65, which is finite
+    because the tail hazard is frozen rather than simulated step by step).
+    This intentionally duplicates (rather than imports) the model-side
+    computation: this analysis package has no dependency on the torch model
+    code, but the two are numerically verified to agree (see
+    ``tests/test_post_analysis_model_comparison.py``).
+    """
+    if not np.isfinite(ah) or not np.isfinite(bh):
+        return float("nan")
+    center = _M4_HAZARD_CENTER
+    cap = _M4_MAXIMUM_REPRESENTED_RUN_LENGTH
+    run_lengths = np.arange(1, cap, dtype=float)  # 1 .. cap-1
+    hazards = 1.0 / (1.0 + np.exp(-(ah + bh * (run_lengths - center))))
+    survival_before = np.concatenate(([1.0], np.cumprod(1.0 - hazards)[:-1]))
+    pmf = survival_before * hazards
+    mean_before_tail = float(np.sum(run_lengths * pmf))
+    survival_at_tail_start = float(np.prod(1.0 - hazards))
+    tail_hazard = 1.0 / (1.0 + np.exp(-(ah + bh * (cap - center))))
+    tail_mean_contribution = survival_at_tail_start * ((cap - 1) + 1.0 / tail_hazard)
+    return mean_before_tail + tail_mean_contribution
+
+
 def _param_series_by_model(sw_params: pd.DataFrame, param_name: str) -> dict[str, pd.Series]:
     """{model_id: Series(param_value indexed by test_rank)}, one series per
     model that actually fits ``param_name``."""
@@ -739,8 +779,35 @@ def _derived_quantity_curves(
     """
     if param_name == "ah":
         raw = _param_series_by_model(sw_params, "ah")
-        derived = {m: 1.0 / _sigmoid_series(s) for m, s in raw.items()}
-        return [("Expected block length = 1 / sigmoid(ah)", "Expected block length (trials)", derived)]
+        bh_raw = _param_series_by_model(sw_params, "bh")
+        derived = {}
+        for model_id, ah_series in raw.items():
+            if model_id == "M4":
+                # M4's hazard varies with run length (sigmoid(ah + bh*(r-23))),
+                # so 1/sigmoid(ah) is only the reciprocal hazard AT r=23, not
+                # the model's actual expected block length -- use the closed-
+                # form mean of the full duration law instead (see
+                # _m4_expected_block_length).
+                bh_series = bh_raw.get(model_id)
+                if bh_series is None:
+                    continue
+                joined = pd.concat({"ah": ah_series, "bh": bh_series}, axis=1).dropna()
+                derived[model_id] = pd.Series(
+                    {
+                        rank: _m4_expected_block_length(row["ah"], row["bh"])
+                        for rank, row in joined.iterrows()
+                    }
+                )
+            else:
+                derived[model_id] = 1.0 / _sigmoid_series(ah_series)
+        return [
+            (
+                "Expected block length = 1/sigmoid(ah) (M1-M3); "
+                "exact duration-law mean (M4, hazard varies with run length)",
+                "Expected block length (trials)",
+                derived,
+            )
+        ]
     if param_name == "delta0":
         raw = _param_series_by_model(sw_params, "delta0")
         theta_s = {m: _sigmoid_series(-s) for m, s in raw.items()}

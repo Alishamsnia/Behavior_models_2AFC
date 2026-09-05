@@ -905,6 +905,55 @@ class ModelComparisonPostAnalysisTests(unittest.TestCase):
                 mismatched, "synthetic",
             )
 
+    def test_m4_expected_block_length_matches_brute_force_duration_mean(self) -> None:
+        """The closed-form Figure 9 mean (ah, bh together) must match a
+        brute-force truncated-sum expectation of M4's own hazard law, and
+        must differ substantially from the M1-M3 formula 1/sigmoid(ah) --
+        which is only the reciprocal hazard at run length 23, not the mean
+        of M4's actual (run-length-varying) duration distribution."""
+        ah, bh = -2.6326975441877343, 0.10493482454586804  # a real fitted MC06 pair
+
+        def brute_force_mean(ah: float, bh: float, center=23, cap=65, horizon=20000) -> float:
+            survival = 1.0
+            total = 0.0
+            for r in range(1, horizon + 1):
+                run_length = min(r, cap)
+                hazard = 1.0 / (1.0 + np.exp(-(ah + bh * (run_length - center))))
+                pmf = survival * hazard
+                total += r * pmf
+                survival *= 1.0 - hazard
+                if survival < 1e-15:
+                    break
+            return total + r * survival  # fold negligible remaining mass in at r
+
+        closed_form = mc_figures._m4_expected_block_length(ah, bh)
+        self.assertAlmostEqual(closed_form, brute_force_mean(ah, bh), places=3)
+
+        wrong_constant_hazard_formula = 1.0 / (1.0 / (1.0 + np.exp(-ah)))
+        self.assertGreater(closed_form / wrong_constant_hazard_formula, 1.3)
+
+    def test_figure9_ah_panel_uses_full_duration_law_for_m4_only(self) -> None:
+        sw_params = pd.DataFrame([
+            {"test_rank": 1, "model_id": "M1", "param_name": "ah", "param_value": -2.0},
+            {"test_rank": 1, "model_id": "M4", "param_name": "ah", "param_value": -2.6326975441877343},
+            {"test_rank": 1, "model_id": "M4", "param_name": "bh", "param_value": 0.10493482454586804},
+        ])
+        curves = mc_figures._derived_quantity_curves("ah", sw_params)
+        self.assertEqual(len(curves), 1)
+        _label, _ylabel, derived = curves[0]
+        m1_value = derived["M1"].loc[1]
+        self.assertAlmostEqual(m1_value, 1.0 / (1.0 / (1.0 + np.exp(2.0))), places=9)
+        m4_value = derived["M4"].loc[1]
+        self.assertAlmostEqual(
+            m4_value,
+            mc_figures._m4_expected_block_length(-2.6326975441877343, 0.10493482454586804),
+            places=9,
+        )
+        # The old bug used 1/sigmoid(ah) for every model including M4; confirm
+        # the M4 curve is no longer that.
+        old_buggy_value = 1.0 / (1.0 / (1.0 + np.exp(2.6326975441877343)))
+        self.assertGreater(abs(m4_value - old_buggy_value), 5.0)
+
 
 if __name__ == "__main__":
     unittest.main()
