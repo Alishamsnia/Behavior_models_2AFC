@@ -311,6 +311,18 @@ def _single_session_pipeline_gate_status(model_id: str, mouse_id: str) -> dict:
 # breakdown instead fail one of the checks below and raised an actual
 # exception mid-optimization. Excluded from ``_numerically_sound_fit``;
 # still recorded verbatim in each run's own ``fine_tune_fit_result.json``.
+#
+# REVISIT AFTER THE CHECKPOINT-SELECTION FIX: every fitter's checkpoint used
+# to be selected only when training NLL improved by more than the same
+# meaningful-improvement tolerance used for early-stopping patience, so a
+# later point with a much smaller gradient norm but a sub-tolerance NLL
+# improvement could be discarded in favor of an earlier, noisier checkpoint
+# (see fit.py's checkpoint-selection fix). That bug inflated how often
+# ``small_gradient_norm`` failed independent of sample size, which was one
+# of the observations motivating this carve-out. Once single-session fits
+# are redone under the corrected checkpoint logic, recount how many still
+# fail only ``small_gradient_norm`` before deciding whether this carve-out
+# is still needed at its current scope, narrower, or not at all.
 _SCALE_SENSITIVE_CONVERGENCE_CHECKS = {
     "small_gradient_norm", "projection_activation_acceptable", "tail_occupancy_acceptable",
 }
@@ -1215,17 +1227,30 @@ def collect_psychometric_comparison_trials(mouse_id: str) -> pd.DataFrame:
         ss_common_index = set.intersection(
             *(set(ss_by_model[m][session_id]["trial_index"]) for m in MODEL_ORDER)
         )
-        if not sw_common_index or not ss_common_index:
+        # Each of the two lines above only guarantees "same trials across
+        # models WITHIN one source" -- it does not by itself guarantee the
+        # two sources agree with each other, even though both are meant to
+        # describe the same session's same (block-trimmed) trial range. A
+        # trial some model's zero-shot sliding-window evaluation happened to
+        # skip (for a reason unrelated to the block structure -- the same
+        # kind of gap already documented above for block_index) but its own
+        # single-session fine-tune did not (or vice versa) would otherwise
+        # let the two plotted sources silently diverge at the trial level
+        # despite this function's own "IDENTICAL trial population ... for
+        # every model and both sources" docstring. Intersecting the two
+        # index sets here is what actually enforces that claim.
+        common_index = sw_common_index & ss_common_index
+        if not common_index:
             continue
         for model_id in MODEL_ORDER:
             sw_rows = sw_by_model[model_id][session_id]
-            sw_rows = sw_rows.loc[sw_rows["trial_index"].isin(sw_common_index)].copy()
+            sw_rows = sw_rows.loc[sw_rows["trial_index"].isin(common_index)].copy()
             sw_rows["model_id"] = model_id
             sw_rows["source"] = "sliding_window"
             rows.append(sw_rows)
 
             ss_rows = ss_by_model[model_id][session_id]
-            ss_rows = ss_rows.loc[ss_rows["trial_index"].isin(ss_common_index)].copy()
+            ss_rows = ss_rows.loc[ss_rows["trial_index"].isin(common_index)].copy()
             ss_rows["model_id"] = model_id
             ss_rows["source"] = "single_session"
             rows.append(ss_rows)

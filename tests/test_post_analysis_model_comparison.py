@@ -16,6 +16,7 @@ from post_analysis.common import MODEL_ORDER, MODEL_SPECS
 from post_analysis.model_comparison import figures as mc_figures
 from post_analysis.model_comparison import stats as mc_stats
 from post_analysis.model_comparison.collect import (
+    collect_psychometric_comparison_trials,
     collect_single_session_information_criteria,
     collect_information_criteria,
     collect_sliding_window_global_pooled_metrics,
@@ -681,6 +682,92 @@ class ModelComparisonPostAnalysisTests(unittest.TestCase):
             rare_ids = common_trial_subset_window_ids(table, "synthetic", "test", "rare_short")
         self.assertEqual(all_ids, {1, 2})
         self.assertEqual(rare_ids, {1})
+
+    def test_psychometric_comparison_enforces_identical_population_across_sources(self) -> None:
+        """collect_psychometric_comparison_trials claims (in its own
+        docstring) an IDENTICAL trial population across sliding-window and
+        single-session sources. Before the fix, the two sources' trial_index
+        intersections were computed independently and never checked against
+        each other, so a trial one model's single-session fine-tune happened
+        to drop (but its own sliding-window evaluation did not) could leave
+        the two sources' populations silently mismatched for that session."""
+        trial_columns = [
+            "session_id", "session_date", "trial_index", "block_index", "true_run_length",
+            "split_role", "per_trial_negative_log_likelihood", "model_evaluated",
+            "category_long", "true_block", "duration_s", "choice_long",
+            "model_probability_long", "mouse_correct", "model_probability_correct",
+        ]
+
+        def _row(trial_index: int, block_index: int, split_role: str) -> dict:
+            return {
+                "session_id": "s1", "session_date": "2026-01-01",
+                "trial_index": trial_index, "block_index": block_index,
+                "true_run_length": 1, "split_role": split_role,
+                "per_trial_negative_log_likelihood": 1.0, "model_evaluated": True,
+                "category_long": 0, "true_block": "S", "duration_s": 0.6,
+                "choice_long": 0, "model_probability_long": 0.2,
+                "mouse_correct": 1, "model_probability_correct": 0.8,
+            }
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for model_id in MODEL_ORDER:
+                # Sliding-window "test" side: every model sees block 1
+                # (trials 1-2) and block 2 (trial 3, trimmed away below).
+                window_dir = root / "sliding" / model_id / "window_00001_synthetic"
+                window_dir.mkdir(parents=True)
+                sw_rows = [_row(1, 1, "test"), _row(2, 1, "test"), _row(3, 2, "test")]
+                pd.DataFrame(sw_rows, columns=trial_columns).to_csv(
+                    window_dir / "trial_predictions.csv", index=False
+                )
+
+                # Single-session "train" prefix (block 1 only, matching the
+                # sliding-window trim boundary) -- M4 alone is missing
+                # trial_index 1, simulating one model's fine-tune dropping a
+                # trial its own sliding-window evaluation kept.
+                session_dir = root / "single" / model_id / "session_001_synthetic"
+                session_dir.mkdir(parents=True)
+                ss_rows = [_row(2, 1, "train")] if model_id == "M4" else [
+                    _row(1, 1, "train"), _row(2, 1, "train"),
+                ]
+                pd.DataFrame(ss_rows, columns=trial_columns).to_csv(
+                    session_dir / "trial_predictions.csv", index=False
+                )
+                (session_dir / "fine_tune_fit_result.json").write_text(json.dumps({
+                    "convergence_checks": [
+                        ["finite_objective", True], ["finite_parameters", True],
+                        ["finite_gradients", True], ["small_gradient_norm", True],
+                        ["stable_fresh_training_nll", True],
+                        ["no_parameter_transform_errors", True],
+                        ["no_probability_normalization_errors", True],
+                    ],
+                }))
+
+            with (
+                patch(
+                    "post_analysis.model_comparison.collect.common.sliding_window_dir",
+                    side_effect=lambda model_id, mouse_id: root / "sliding" / model_id,
+                ),
+                patch(
+                    "post_analysis.model_comparison.collect.common.single_session_dir",
+                    side_effect=lambda model_id, mouse_id: root / "single" / model_id,
+                ),
+            ):
+                table = collect_psychometric_comparison_trials("synthetic")
+
+        sw_index = set(table.loc[table["source"] == "sliding_window", "trial_index"])
+        ss_index = set(table.loc[table["source"] == "single_session", "trial_index"])
+        self.assertEqual(
+            sw_index, ss_index,
+            "sliding-window and single-session sources must share an identical "
+            "trial population, per this function's own docstring",
+        )
+        # trial_index 1 is exactly the trial M4's single-session fine-tune
+        # dropped -- it must not survive in either source once the two
+        # sources' populations are correctly intersected with each other.
+        self.assertNotIn(1, sw_index)
+        self.assertNotIn(1, ss_index)
+        self.assertEqual(sw_index, {2})
 
     def test_pooled_diamond_equals_raw_trial_pool(self) -> None:
         rows = []
