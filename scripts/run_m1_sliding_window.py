@@ -482,9 +482,13 @@ def _single_session_job(payload: dict[str, Any]) -> dict[str, Any]:
     )
     experimental_registry = replace(registry, initializations=(initialization,))
     started = time.monotonic()
-    resumed_postfit = payload["resume"] and result_path.is_file()
+    resumed_postfit = (
+        payload["resume"]
+        and previous_result is not None
+        and not result_registry_is_stale(previous_result, registry)
+    )
     if resumed_postfit:
-        run_record = json.loads(result_path.read_text(encoding="utf-8"))
+        run_record = previous_result
     else:
         train_session = m1_session_trials_from_frame(prefix, split_role="train")
         monitor_frame = prefix.copy()

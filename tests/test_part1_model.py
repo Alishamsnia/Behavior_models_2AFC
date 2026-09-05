@@ -26,6 +26,7 @@ from m0_sensory_v1.model import (  # noqa: E402
     log_odds_coefficients,
     positive_decision_threshold,
     predict_m0_trials,
+    solve_positive_decision_region,
 )
 
 
@@ -119,6 +120,34 @@ class PartOneModelTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(ValueError, "exactly one positive"):
             positive_decision_threshold(two_positive)
+
+    def test_positive_threshold_double_root_gradients_are_finite(self) -> None:
+        """At an exact double root, sqrt(discriminant)'s local derivative
+        diverges; torch.where's backward would otherwise multiply that
+        infinite derivative by an exact-zero selection mask (0*inf=NaN)
+        even though the forward threshold never depends on the sqrt-derived
+        branch there. Covers both an exact double root and a
+        negative-but-within-tolerance discriminant (which clamp_min maps to
+        an exact zero pre-sqrt)."""
+        a2 = torch.tensor(1.0, dtype=DTYPE, requires_grad=True)
+        a1 = torch.tensor(-2.0, dtype=DTYPE, requires_grad=True)
+        a0 = torch.tensor(1.0, dtype=DTYPE, requires_grad=True)  # discriminant == 0 exactly
+        coefficients = LogOddsCoefficients(a2=a2, a1=a1, a0=a0)
+        region = solve_positive_decision_region(coefficients)
+        self.assertEqual(region.solver_regime, "quadratic_double_root")
+        region.threshold_s.backward()
+        for grad in (a2.grad, a1.grad, a0.grad):
+            self.assertTrue(torch.isfinite(grad).all())
+
+        a2b = torch.tensor(1.0, dtype=DTYPE, requires_grad=True)
+        a1b = torch.tensor(-2.0, dtype=DTYPE, requires_grad=True)
+        a0b = torch.tensor(1.0 + 1e-13, dtype=DTYPE, requires_grad=True)  # discriminant < 0, within tolerance
+        region_b = solve_positive_decision_region(
+            LogOddsCoefficients(a2=a2b, a1=a1b, a0=a0b)
+        )
+        region_b.threshold_s.backward()
+        for grad in (a2b.grad, a1b.grad, a0b.grad):
+            self.assertTrue(torch.isfinite(grad).all())
 
     def test_fixed_neutral_prior_is_exactly_half(self) -> None:
         prior = fixed_neutral_prior(torch.empty(17, dtype=DTYPE))

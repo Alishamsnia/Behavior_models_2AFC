@@ -293,6 +293,14 @@ def solve_positive_decision_region(
     -------------------
     Discriminants within ``discriminant_tolerance`` below zero are clamped to
     zero before ``sqrt``. The linear limit avoids division by near-zero ``a2``.
+    At an exact or clamped double root, ``sqrt``'s own input is additionally
+    routed through a safe strictly-positive placeholder rather than the
+    clamped discriminant, because ``sqrt``'s local derivative diverges at
+    zero and ``torch.where``'s backward would otherwise multiply that
+    infinite local derivative by an exact-zero selection mask (0 * inf =
+    NaN), poisoning ``a2``/``a1``/``a0``'s gradients even though the
+    double-root branch never uses the sqrt-derived value in its forward
+    output.
 
     Causal restrictions
     -------------------
@@ -335,16 +343,30 @@ def solve_positive_decision_region(
     discriminant = a1.square() - 4.0 * a2 * a0
     if bool(torch.any(discriminant < -discriminant_tolerance).detach().cpu()):
         raise ValueError("Posterior log odds have no real decision root")
-    square_root = torch.sqrt(torch.clamp_min(discriminant, 0.0))
     denominator = 2.0 * a2
+    is_double_root = torch.abs(discriminant) <= discriminant_tolerance
+    double_root = -a1 / denominator
+    # At (or numerically clamped to) a double root, sqrt's local derivative
+    # 1/(2*sqrt(x)) diverges as x -> 0. `roots`/`selected_root` are discarded
+    # in favor of `double_root` (no sqrt involved) at these positions via
+    # `torch.where` below, but torch.where's backward still multiplies each
+    # branch's OWN local gradient by its selection mask -- 0 (mask) * inf
+    # (sqrt's local derivative) is NaN, not 0, so the discarded branch's
+    # singularity would still poison a2/a1/a0's gradients here. Substitute a
+    # safe, strictly-positive placeholder before the sqrt at exactly the
+    # positions whose sqrt-derived value is never actually used, so no
+    # element of `discriminant` this function differentiates through is ever
+    # at (or clamped to) zero.
+    safe_discriminant = torch.where(
+        is_double_root, torch.ones_like(discriminant), torch.clamp_min(discriminant, 0.0)
+    )
+    square_root = torch.sqrt(safe_discriminant)
     roots = torch.stack(
         ((-a1 - square_root) / denominator, (-a1 + square_root) / denominator),
         dim=0,
     )
     positive = roots > 0.0
     positive_count = positive.sum(dim=0)
-    is_double_root = torch.abs(discriminant) <= discriminant_tolerance
-    double_root = -a1 / denominator
     simple_root = ~is_double_root
     if bool(torch.any(simple_root & (a2 <= 0.0)).detach().cpu()):
         raise ValueError("Quadratic boundary is not an upper long-choice threshold")
