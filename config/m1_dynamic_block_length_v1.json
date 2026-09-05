@@ -1,0 +1,99 @@
+{
+  "model_id": "M1_dynamic_block_length_v1",
+  "scientific_alias": "M_HMM,true+duration",
+  "registry_schema_version": "1.0",
+  "software_version": "0.1.0",
+  "implemented_scope": "fixed true-rate prototype, capped-tail duration-dependent-hazard HSMM",
+  "parameter_order": ["w", "s0", "ell_short", "ell_long", "kappa", "ah", "bh"],
+  "session_policy": "independent_dynamic_episode_reset_to_neutral",
+  "source_m1_registry": {
+    "file": "config/m1_hmm_true_v1.json",
+    "sha256": "fa3ac76f05a6884c32c681c3ff1b1c49607f36009461a14e334880d0645a02c4"
+  },
+  "hsmm": {
+    "state_order": ["N", "S", "L"],
+    "run_length_center": 23,
+    "maximum_represented_run_length": 65,
+    "tail_state_semantics": "r65_represents_R_greater_than_or_equal_to_65",
+    "tail_hazard_policy": "hazard_saturates_at_h65_and_survival_remains_in_tail",
+    "hazard": "biased_sigmoid_ah_plus_bh_times_minR65_minus_23_with_tied_neutral_half_hazard",
+    "neutral_hazard_scale": 0.5,
+    "common_hazard_across_neutral_and_biased_states": false,
+    "neutral_reentry": false,
+    "biased_switch_rule": "S_to_L_and_L_to_S_only",
+    "within_trial_order": "predict_then_emission_update_then_hsmm_transition",
+    "prototype_source": "fixed_true_rates_no_fitted_prototype",
+    "true_block_predictive_input": false,
+    "true_run_length_predictive_input": false,
+    "independent_of_m4_hsmm_delta_v1": "capped_tail_hsmm kernel is independently authored in m0_sensory_v1.model.capped_tail_hsmm, not imported from m4_hsmm_delta_v1"
+  },
+  "tail_acceptance": {
+    "statistic": "mean_pre_choice_tail_probability_across_all_training_timeline_trials",
+    "maximum_accepted_value": 0.01,
+    "required_for_convergence_and_winner_eligibility": true,
+    "rationale": "more_than_one_percent_expected_tail_occupancy_can_materially_identify_bh_from_the_frozen_h65_approximation"
+  },
+  "initialization_table": {
+    "version": "m1_dynamic_block_length_exact_m1_plus_bh_v1",
+    "file": "config/initializations/m1_dynamic_block_length_v1_starts.json",
+    "sha256": "0ecfa60d9737e1d1dd0c95224623477422cb57336e227c00c243754dec9ac14d",
+    "count": 8,
+    "generation_policy": "pair_each_M1_start_by_id_with_one_registered_bh"
+  },
+  "convergence": {
+    "maximum_epochs": 2000,
+    "minimum_learning_rate": 1e-6,
+    "gradient_norm_tolerance": 1e-5,
+    "meaningful_improvement_tolerance": 1e-8,
+    "no_improvement_patience_epochs": 100,
+    "stable_training_window_epochs": 25,
+    "required_checks": [
+      "finite_objective",
+      "finite_parameters",
+      "finite_gradients",
+      "small_gradient_norm",
+      "stable_fresh_training_nll",
+      "no_parameter_transform_errors",
+      "no_probability_normalization_errors",
+      "no_optimizer_runtime_errors",
+      "tail_occupancy_acceptable"
+    ],
+    "note": "M1's seven base checks plus two HSMM-specific checks (values match M4's registered contract, independently declared here); no projection check since this model has no delta-update rule."
+  },
+  "fitting": {
+    "lbfgs_maximum_steps": 250,
+    "lbfgs_learning_rate": 1.0,
+    "lbfgs_history_size": 10,
+    "lbfgs_maximum_evaluations_per_step": 20,
+    "lbfgs_tolerance_grad": 1e-9,
+    "lbfgs_tolerance_change": 1e-12,
+    "lbfgs_line_search_fn": "strong_wolfe",
+    "optional_adam_warmup_steps": 100,
+    "optional_adam_learning_rate": 0.01
+  },
+  "multi_start_selection": {
+    "winner_criterion": "lowest_recalculated_best_training_mean_nll_among_converged_runs",
+    "near_equal_training_nll_tolerance": 1e-6,
+    "identifiability_parameter_distance_threshold": 0.25,
+    "parameter_distance_scale": [0.2, 1.2, 0.2, 1.0, 1.0, 2.0, 0.2],
+    "additional_starts_policy": "report_need_only_never_generate_automatically",
+    "result_schema_version": "m1_dynamic_block_length_fit_result_v1"
+  },
+  "metrics": {
+    "primary": ["elpd", "mean_nll_per_valid_trial", "delta_bits_per_trial_vs_m1"],
+    "diagnostics": [
+      "calibration_curve",
+      "overall_psychometric_curve",
+      "per_session_mean_nll",
+      "prediction_distribution",
+      "joint_block_run_length_belief_trajectory",
+      "trialwise_prior_long",
+      "trialwise_emission_normalizer",
+      "trialwise_decision_region_regime",
+      "fitted_hazard_curve",
+      "implied_duration_distribution",
+      "tail_probability_diagnostic",
+      "bh_boundary_proximity"
+    ]
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "split_version": "chronological_70_15_15_v1",
+  "policy": "chronological_per_mouse_largest_remainder",
+  "proportions": {
+    "train": 0.7,
+    "validation": 0.15,
+    "test": 0.15
+  },
+  "tie_priority": ["test", "validation", "train"],
+  "assignment_file": "chronological_70_15_15_v1.csv",
+  "assignment_sha256": "2d2b1163da0d042d7dc65be7600752d3aa2235bc815562e962f2666a5479a9c7",
+  "source": "Filename metadata for the 42 MC08 sessions explicitly listed in Model_v24_validation.ipynb",
+  "counts_by_mouse": {
+    "MC08": {
+      "total": 42,
+      "train": 30,
+      "validation": 6,
+      "test": 6
+    }
+  },
+  "locked_test_evaluated": false,
+  "test_lock_note": "Test session IDs must not enter training or validation evaluation until all planned models are implemented and frozen."
+}

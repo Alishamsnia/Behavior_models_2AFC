@@ -1,0 +1,102 @@
+{
+  "model_id": "M0",
+  "created_at": "2026-08-23T17:37:08.243972+03:00",
+  "raw_behavior_root": "/home/ihsan/Desktop/data/Georgia_Tech/2AFC/Codes/Behavior/New_version",
+  "n_sessions_won": 13,
+  "subjects": {
+    "MC06": {
+      "source_csv": "/home/ihsan/Desktop/data/Georgia_Tech/2AFC/Codes/Behavior/New_version/MC06_final_data.csv",
+      "source_trial_count": 14743,
+      "n_sessions_won": 13,
+      "sessions": [
+        {
+          "raw_session_idx": 20,
+          "session_date": "20260122",
+          "chronological_rank": 19,
+          "session_id": "MC06_SChR2_block_single_interval_discrimination_V_1_20260122_150723"
+        },
+        {
+          "raw_session_idx": 23,
+          "session_date": "20260128",
+          "chronological_rank": 22,
+          "session_id": "MC06_SChR2_block_single_interval_discrimination_V_1_20260128_134756"
+        },
+        {
+          "raw_session_idx": 28,
+          "session_date": "20260204",
+          "chronological_rank": 27,
+          "session_id": "MC06_SChR2_block_single_interval_discrimination_V_1_20260204_143807"
+        },
+        {
+          "raw_session_idx": 29,
+          "session_date": "20260205",
+          "chronological_rank": 28,
+          "session_id": "MC06_SChR2_block_single_interval_discrimination_V_1_20260205_162549"
+        },
+        {
+          "raw_session_idx": 32,
+          "session_date": "20260211",
+          "chronological_rank": 31,
+          "session_id": "MC06_SChR2_block_single_interval_discrimination_V_1_20260211_132110"
+        },
+        {
+          "raw_session_idx": 33,
+          "session_date": "20260212",
+          "chronological_rank": 32,
+          "session_id": "MC06_SChR2_block_single_interval_discrimination_V_1_20260212_142543"
+        },
+        {
+          "raw_session_idx": 35,
+          "session_date": "20260217",
+          "chronological_rank": 34,
+          "session_id": "MC06_SChR2_block_single_interval_discrimination_V_1_20260217_171315"
+        },
+        {
+          "raw_session_idx": 36,
+          "session_date": "20260218",
+          "chronological_rank": 35,
+          "session_id": "MC06_SChR2_block_single_interval_discrimination_V_1_20260218_162836"
+        },
+        {
+          "raw_session_idx": 37,
+          "session_date": "20260219",
+          "chronological_rank": 36,
+          "session_id": "MC06_SChR2_block_single_interval_discrimination_V_1_20260219_135617"
+        },
+        {
+          "raw_session_idx": 39,
+          "session_date": "20260224",
+          "chronological_rank": 38,
+          "session_id": "MC06_SChR2_block_single_interval_discrimination_V_1_20260224_160017"
+        },
+        {
+          "raw_session_idx": 40,
+          "session_date": "20260225",
+          "chronological_rank": 39,
+          "session_id": "MC06_SChR2_block_single_interval_discrimination_V_1_20260225_135329"
+        },
+        {
+          "raw_session_idx": 41,
+          "session_date": "20260226",
+          "chronological_rank": 40,
+          "session_id": "MC06_SChR2_block_single_interval_discrimination_V_1_20260226_133633"
+        },
+        {
+          "raw_session_idx": 43,
+          "session_date": "20260302",
+          "chronological_rank": 42,
+          "session_id": "MC06_SChR2_block_single_interval_discrimination_V_1_20260302_140324"
+        }
+      ],
+      "filtered_trial_count": 3938,
+      "filtered_csv": "/home/ihsan/Desktop/data/Georgia_Tech/2AFC/Codes/Model_behavior/Bayesian_model_v2/results_raw_behavior_by_winner/M0/MC06_final_data.csv"
+    }
+  },
+  "pooled_csv": "/home/ihsan/Desktop/data/Georgia_Tech/2AFC/Codes/Model_behavior/Bayesian_model_v2/results_raw_behavior_by_winner/M0/all_subjects_final_data.csv",
+  "pooled_trial_count": 3938,
+  "pooled_session_count": 13,
+  "status": "ok",
+  "pooled_subjects": [
+    "MC06"
+  ]
+}

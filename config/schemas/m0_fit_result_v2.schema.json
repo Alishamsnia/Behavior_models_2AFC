@@ -1,0 +1,365 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "m0_fit_result_v2.schema.json",
+  "title": "M0 sensory v1 single-start fit result",
+  "description": "Strict schema for registered Adam results and opt-in L-BFGS or hybrid results.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "result_schema_version",
+    "model_id",
+    "mouse_id",
+    "registry_config_sha256",
+    "model_registry_snapshot",
+    "training_session_ids",
+    "validation_session_ids",
+    "training_valid_trial_count",
+    "validation_valid_trial_count",
+    "start_id",
+    "start_purpose",
+    "random_seed",
+    "initial_constrained_parameters",
+    "initial_raw_parameters",
+    "initial_training_mean_nll",
+    "initial_validation_mean_nll",
+    "best_raw_parameters",
+    "best_constrained_parameters",
+    "best_fresh_training_mean_nll",
+    "recalculated_best_training_mean_nll",
+    "final_validation_mean_nll",
+    "gradient_norm_at_restored_best",
+    "best_epoch",
+    "final_epoch",
+    "final_learning_rate",
+    "optimizer_step_count",
+    "termination_reason",
+    "converged",
+    "convergence_checks",
+    "history",
+    "training_history",
+    "validation_history",
+    "boundary_proximity",
+    "nonfinite_event_count",
+    "registered_max_epochs",
+    "executed_max_epochs",
+    "is_registered_duration_run",
+    "registered_initial_learning_rate",
+    "executed_initial_learning_rate",
+    "is_registered_learning_rate_run",
+    "exception_message"
+  ],
+  "properties": {
+    "result_schema_version": {"const": "m0_fit_result_v2"},
+    "model_id": {"const": "M0_sensory_v1"},
+    "mouse_id": {"type": "string", "minLength": 1},
+    "registry_config_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "model_registry_snapshot": {"type": "object"},
+    "training_session_ids": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "validation_session_ids": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "training_valid_trial_count": {"type": "integer", "minimum": 1},
+    "validation_valid_trial_count": {"type": "integer", "minimum": 1},
+    "start_id": {"type": "integer", "minimum": 1, "maximum": 8},
+    "start_purpose": {"type": "string", "minLength": 1},
+    "random_seed": {"type": "integer", "minimum": 0},
+    "initial_constrained_parameters": {"$ref": "#/$defs/fiveVector"},
+    "initial_raw_parameters": {"$ref": "#/$defs/fiveVector"},
+    "initial_training_mean_nll": {"type": "number"},
+    "initial_validation_mean_nll": {"type": "number"},
+    "best_raw_parameters": {"$ref": "#/$defs/fiveVector"},
+    "best_constrained_parameters": {"$ref": "#/$defs/fiveVector"},
+    "best_fresh_training_mean_nll": {"type": "number"},
+    "recalculated_best_training_mean_nll": {"type": "number"},
+    "final_validation_mean_nll": {"type": "number"},
+    "gradient_norm_at_restored_best": {"type": "number", "minimum": 0},
+    "best_epoch": {"type": "integer", "minimum": 0},
+    "final_epoch": {"type": "integer", "minimum": 0},
+    "final_learning_rate": {"type": "number", "exclusiveMinimum": 0},
+    "optimizer_step_count": {"type": "integer", "minimum": 0},
+    "termination_reason": {"type": "string", "minLength": 1},
+    "converged": {"type": "boolean"},
+    "convergence_checks": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/convergenceCheck"},
+      "minItems": 1
+    },
+    "history": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {"$ref": "#/$defs/adamEpochRecord"},
+          {"$ref": "#/$defs/strategyEpochRecord"}
+        ]
+      }
+    },
+    "training_history": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/historyPoint"}
+    },
+    "validation_history": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/historyPoint"}
+    },
+    "boundary_proximity": {"$ref": "#/$defs/boundaryProximity"},
+    "nonfinite_event_count": {"type": "integer", "minimum": 0},
+    "registered_max_epochs": {"type": "integer", "minimum": 1},
+    "executed_max_epochs": {"type": "integer", "minimum": 1},
+    "is_registered_duration_run": {"type": "boolean"},
+    "registered_initial_learning_rate": {"type": "number", "exclusiveMinimum": 0},
+    "executed_initial_learning_rate": {"type": "number", "exclusiveMinimum": 0},
+    "is_registered_learning_rate_run": {"type": "boolean"},
+    "exception_message": {"type": ["string", "null"]},
+    "optimizer_strategy": {"enum": ["lbfgs", "hybrid"]},
+    "optimizer_settings": {"$ref": "#/$defs/optimizerSettings"},
+    "adam_step_count": {"type": "integer", "minimum": 0},
+    "lbfgs_step_count": {"type": "integer", "minimum": 0},
+    "training_objective_evaluation_count": {"type": "integer", "minimum": 1},
+    "phase_switch_epoch": {"type": ["integer", "null"], "minimum": 0},
+    "phase_switch_training_mean_nll": {"type": ["number", "null"]},
+    "best_optimizer_phase": {"enum": ["initial", "adam", "lbfgs"]},
+    "convergence_budget_sufficient": {"type": "boolean"},
+    "stability_history_source": {"enum": ["lbfgs_only", "combined_adam_lbfgs"]}
+  },
+  "allOf": [
+    {
+      "if": {"required": ["optimizer_strategy"]},
+      "then": {
+        "required": [
+          "optimizer_settings",
+          "adam_step_count",
+          "lbfgs_step_count",
+          "training_objective_evaluation_count",
+          "phase_switch_epoch",
+          "phase_switch_training_mean_nll",
+          "best_optimizer_phase",
+          "convergence_budget_sufficient",
+          "stability_history_source"
+        ]
+      }
+    },
+    {
+      "if": {"not": {"required": ["optimizer_strategy"]}},
+      "then": {
+        "not": {
+          "anyOf": [
+            {"required": ["optimizer_settings"]},
+            {"required": ["adam_step_count"]},
+            {"required": ["lbfgs_step_count"]},
+            {"required": ["training_objective_evaluation_count"]},
+            {"required": ["phase_switch_epoch"]},
+            {"required": ["phase_switch_training_mean_nll"]},
+            {"required": ["best_optimizer_phase"]},
+            {"required": ["convergence_budget_sufficient"]},
+            {"required": ["stability_history_source"]}
+          ]
+        }
+      }
+    },
+    {
+      "if": {"properties": {"optimizer_strategy": {"const": "lbfgs"}}, "required": ["optimizer_strategy"]},
+      "then": {
+        "properties": {
+          "adam_step_count": {"const": 0},
+          "phase_switch_epoch": {"type": "null"},
+          "phase_switch_training_mean_nll": {"type": "null"},
+          "stability_history_source": {"const": "lbfgs_only"}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"optimizer_strategy": {"const": "hybrid"}}, "required": ["optimizer_strategy"]},
+      "then": {
+        "properties": {
+          "phase_switch_epoch": {"type": "integer", "minimum": 0},
+          "phase_switch_training_mean_nll": {"type": "number"},
+          "stability_history_source": {"const": "combined_adam_lbfgs"}
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "fiveVector": {
+      "type": "array",
+      "prefixItems": [
+        {"type": "number"},
+        {"type": "number"},
+        {"type": "number"},
+        {"type": "number"},
+        {"type": "number"}
+      ],
+      "items": false,
+      "minItems": 5,
+      "maxItems": 5
+    },
+    "historyPoint": {
+      "type": "array",
+      "prefixItems": [
+        {"type": "integer", "minimum": 1},
+        {"type": "number"}
+      ],
+      "items": false,
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "convergenceCheck": {
+      "type": "array",
+      "prefixItems": [
+        {"type": "string", "minLength": 1},
+        {"type": "boolean"}
+      ],
+      "items": false,
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "boundaryProximity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "w_from_zero",
+        "s0_from_zero",
+        "ell_short_fraction_to_nearest_boundary",
+        "ell_long_fraction_to_nearest_boundary"
+      ],
+      "properties": {
+        "w_from_zero": {"type": "number", "minimum": 0},
+        "s0_from_zero": {"type": "number", "minimum": 0},
+        "ell_short_fraction_to_nearest_boundary": {"type": "number", "minimum": 0},
+        "ell_long_fraction_to_nearest_boundary": {"type": "number", "minimum": 0}
+      }
+    },
+    "adamEpochRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "epoch",
+        "optimization_loss_before_step",
+        "fresh_training_mean_nll",
+        "validation_mean_nll",
+        "gradient_norm_before_step",
+        "learning_rate_after_scheduler",
+        "training_checkpoint_improved",
+        "raw_parameters_after_step",
+        "constrained_parameters_after_step"
+      ],
+      "properties": {
+        "epoch": {"type": "integer", "minimum": 1},
+        "optimization_loss_before_step": {"type": "number"},
+        "fresh_training_mean_nll": {"type": "number"},
+        "validation_mean_nll": {"type": "number"},
+        "gradient_norm_before_step": {"type": "number", "minimum": 0},
+        "learning_rate_after_scheduler": {"type": "number", "exclusiveMinimum": 0},
+        "training_checkpoint_improved": {"type": "boolean"},
+        "raw_parameters_after_step": {"$ref": "#/$defs/fiveVector"},
+        "constrained_parameters_after_step": {"$ref": "#/$defs/fiveVector"}
+      }
+    },
+    "strategyEpochRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "epoch",
+        "optimization_loss_before_step",
+        "fresh_training_mean_nll",
+        "validation_mean_nll",
+        "gradient_norm_before_step",
+        "learning_rate_after_scheduler",
+        "training_checkpoint_improved",
+        "raw_parameters_after_step",
+        "constrained_parameters_after_step",
+        "optimizer_phase",
+        "phase_step",
+        "training_objective_evaluation_count",
+        "gradient_norm_after_step",
+        "closure_evaluation_count"
+      ],
+      "properties": {
+        "epoch": {"type": "integer", "minimum": 1},
+        "optimization_loss_before_step": {"type": "number"},
+        "fresh_training_mean_nll": {"type": "number"},
+        "validation_mean_nll": {"type": "number"},
+        "gradient_norm_before_step": {"type": "number", "minimum": 0},
+        "learning_rate_after_scheduler": {"type": "number", "exclusiveMinimum": 0},
+        "training_checkpoint_improved": {"type": "boolean"},
+        "raw_parameters_after_step": {"$ref": "#/$defs/fiveVector"},
+        "constrained_parameters_after_step": {"$ref": "#/$defs/fiveVector"},
+        "optimizer_phase": {"enum": ["adam", "lbfgs"]},
+        "phase_step": {"type": "integer", "minimum": 1},
+        "training_objective_evaluation_count": {"type": "integer", "minimum": 1},
+        "gradient_norm_after_step": {"type": ["number", "null"], "minimum": 0},
+        "closure_evaluation_count": {"type": "integer", "minimum": 0}
+      }
+    },
+    "optimizerSettings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "strategy",
+        "lbfgs",
+        "planned_history_length",
+        "stability_window",
+        "convergence_budget_sufficient",
+        "short_budget_explicitly_allowed"
+      ],
+      "properties": {
+        "strategy": {"enum": ["lbfgs", "hybrid"]},
+        "lbfgs": {"$ref": "#/$defs/lbfgsSettings"},
+        "planned_history_length": {"type": "integer", "minimum": 1},
+        "stability_window": {"type": "integer", "minimum": 1},
+        "convergence_budget_sufficient": {"type": "boolean"},
+        "short_budget_explicitly_allowed": {"type": "boolean"},
+        "adam_warmup": {"$ref": "#/$defs/adamWarmupSettings"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"strategy": {"const": "hybrid"}}},
+          "then": {"required": ["adam_warmup"]}
+        },
+        {
+          "if": {"properties": {"strategy": {"const": "lbfgs"}}},
+          "then": {"not": {"required": ["adam_warmup"]}}
+        }
+      ]
+    },
+    "lbfgsSettings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "maximum_steps",
+        "learning_rate",
+        "history_size",
+        "maximum_evaluations_per_step",
+        "tolerance_grad",
+        "tolerance_change",
+        "line_search_fn"
+      ],
+      "properties": {
+        "maximum_steps": {"type": "integer", "minimum": 1},
+        "learning_rate": {"type": "number", "exclusiveMinimum": 0},
+        "history_size": {"type": "integer", "minimum": 1},
+        "maximum_evaluations_per_step": {"type": "integer", "minimum": 1},
+        "tolerance_grad": {"type": "number", "exclusiveMinimum": 0},
+        "tolerance_change": {"type": "number", "exclusiveMinimum": 0},
+        "line_search_fn": {"const": "strong_wolfe"}
+      }
+    },
+    "adamWarmupSettings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maximum_epochs", "initial_learning_rate", "scheduler"],
+      "properties": {
+        "maximum_epochs": {"type": "integer", "minimum": 1},
+        "initial_learning_rate": {"type": "number", "exclusiveMinimum": 0},
+        "scheduler": {"const": "registered_reduce_on_plateau"}
+      }
+    }
+  }
+}

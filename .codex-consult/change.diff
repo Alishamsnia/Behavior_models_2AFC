@@ -1,0 +1,58 @@
+Workspace note: this directory is not a Git repository, so no baseline commit exists.
+The following is the exact implementation inventory; inspect the named current files and lines.
+
+--- post_analysis/model_comparison/collect.py
++++ post_analysis/model_comparison/collect.py
+@@ event-aligned statistics
++ Added EVENT_RELATIVE_POSITIONS and TRANSITION_EVENT_CATEGORIES.
++ Replaced _event_aligned_unit_scalar with public event_aligned_unit_scalar(...,
++ relative_positions=None). It rejects duplicate (unit,model,position) rows and
++ incomplete position sets before averaging.
++ Added _validate_matched_event_counts to require equal per-unit event counts
++ across M0-M4 for matched units.
++ Extended common_event_window_ids/common_event_session_ids with optional
++ relative_positions and the new validation.
++ Added compute_sliding_window_event_aligned_trial0_paired_tests for the two
++ transition directions, using position 0 and adjacent_pairwise_tests.
++ collect.run now writes sliding_window_event_aligned_trial0_paired_pairwise.csv.
+
+--- post_analysis/model_comparison/figures.py
++++ post_analysis/model_comparison/figures.py
+@@ paired annotations
++ Added _paired_effect_summary. Direction is derived from
++ median_diff_a_minus_b: positive means model_b has lower NLL; negative means
++ model_a has lower NLL. _draw_adjacent_significance and event text display
++ that model with a down-arrow, significance stars, and Holm-adjusted p.
++ Figure 01 and 03 captions explain the paired direction. Figure 01 and all
++ sliding-window p-values remain explicitly exploratory.
+
+@@ Figure 09
++ Added MODEL_SPECIFIC_PARAMETER_CARDS for ah, delta0, alpha_theta, bh.
++ Layout is now 4x2 (trajectory + meaning card). Legends show per-model N.
++ Trajectories are reindexed to all chronological ranks so missing M4 windows
++ create visible gaps rather than connected lines.
+
+@@ Figure 16
++ fig_sliding_window_event_aligned_nll now takes a third trial-0 pairwise table.
++ Uses 3x4 GridSpec: existing four trajectory panels span pairs of columns in
++ the first two rows; bottom row has box+strip panels for S→L trial 0, L→S
++ trial 0, S→L whole -5..+5 range, L→S whole range.
++ Each summary panel uses event_aligned_unit_scalar and exact common windows.
++ Registry fig16 dependency includes the new trial-0 pairwise CSV.
+
+--- post_analysis/model_comparison/report.py
++++ post_analysis/model_comparison/report.py
++ Loads/reports trial-0 results and documents the two Figure 16 estimands.
++ Significant result text names the lower-NLL model from the paired median
++ difference; non-significant text reports direction as descriptive only.
+
+--- tests/test_post_analysis_model_comparison.py
++++ tests/test_post_analysis_model_comparison.py
++ Registry test expects the third fig16 CSV and exact renderer argument.
++ Added tests that trial-0 uses position 0 for both transition directions.
++ Added failures for incomplete position coverage and unequal event counts.
++ Added report paired-direction regression test.
+
+--- post_analysis/README.md
++++ post_analysis/README.md
++ Documents the new CSV and updated Figure 09/Figure 16 layouts.

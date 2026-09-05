@@ -1,0 +1,25 @@
+{
+  "model_id": "M2_dynamic_block_length_v1",
+  "table_version": "m2_dynamic_block_length_exact_m2_plus_bh_v1",
+  "frozen": true,
+  "generation_policy": "pair_each_M2_start_by_id_with_one_registered_bh",
+  "parameter_order": ["w", "s0", "ell_short", "ell_long", "kappa", "ah", "delta0", "bh"],
+  "duration_unit": "seconds",
+  "lapse_max": 1.0,
+  "m2_source": {
+    "file": "config/initializations/m2_hmm_static_v1_starts.json",
+    "table_version": "m2_directional_lapse_kappa_exact_m1_plus_log4_v3",
+    "sha256": "d74cf9c0013c8dec9276f8c12ff58b06f4e47a8a1a58bc8ef0614ead0bac05af"
+  },
+  "bh_assignment_by_start_id": {"1": 0.02, "2": 0.05, "3": 0.10, "4": 0.20, "5": 0.40, "6": 0.08, "7": 0.30, "8": 0.01},
+  "starts": [
+    {"start_id": 1, "source_m2_start_id": 1, "w": 0.0271, "s0": 0.555, "ell_short": 0.03, "ell_long": 0.03, "kappa": 1.0, "ah": -3.367295829986932, "delta0": 1.3862943611198906, "bh": 0.02, "purpose": "Exact M2 start 1 plus broad positive duration slope"},
+    {"start_id": 2, "source_m2_start_id": 2, "w": 0.005, "s0": 0.7, "ell_short": 0.135, "ell_long": 0.015, "kappa": 0.5, "ah": -4.59511985013459, "delta0": 1.3862943611198906, "bh": 0.05, "purpose": "Exact M2 start 2 plus moderate duration slope"},
+    {"start_id": 3, "source_m2_start_id": 3, "w": 0.01, "s0": 1.2, "ell_short": 0.0105, "ell_long": 0.0195, "kappa": 2.0, "ah": -3.8918202981106265, "delta0": 1.3862943611198906, "bh": 0.10, "purpose": "Exact M2 start 3 plus intermediate duration slope"},
+    {"start_id": 4, "source_m2_start_id": 4, "w": 0.02, "s0": 0.25, "ell_short": 0.224, "ell_long": 0.056, "kappa": 0.75, "ah": -2.9444389791664403, "delta0": 1.3862943611198906, "bh": 0.20, "purpose": "Exact M2 start 4 plus strong duration slope"},
+    {"start_id": 5, "source_m2_start_id": 5, "w": 0.04, "s0": 0.9, "ell_short": 0.002, "ell_long": 0.008, "kappa": 1.3333333333333333, "ah": -2.4423470353692043, "delta0": 1.3862943611198906, "bh": 0.40, "purpose": "Exact M2 start 5 plus sharp duration slope"},
+    {"start_id": 6, "source_m2_start_id": 6, "w": 0.07, "s0": 0.15, "ell_short": 0.13, "ell_long": 0.07, "kappa": 0.9, "ah": -1.9924301646902063, "delta0": 1.3862943611198906, "bh": 0.08, "purpose": "Exact M2 start 6 plus moderate duration slope"},
+    {"start_id": 7, "source_m2_start_id": 7, "w": 0.12, "s0": 0.45, "ell_short": 0.036, "ell_long": 0.324, "kappa": 1.1111111111111112, "ah": -1.3862943611198906, "delta0": 1.3862943611198906, "bh": 0.30, "purpose": "Exact M2 start 7 plus strong duration slope"},
+    {"start_id": 8, "source_m2_start_id": 8, "w": 0.2, "s0": 0.35, "ell_short": 0.098, "ell_long": 0.002, "kappa": 1.0, "ah": -0.6190392084062235, "delta0": 1.3862943611198906, "bh": 0.01, "purpose": "Exact M2 start 8 plus near-zero duration slope"}
+  ]
+}

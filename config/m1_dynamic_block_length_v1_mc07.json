@@ -1,0 +1,7 @@
+{
+  "extends": "m1_dynamic_block_length_v1.json",
+  "source_m1_registry": {
+    "file": "config/m1_hmm_true_v1_mc07.json",
+    "sha256": "c99f653c762bf486bd2c52547848a3949e3dae195c83fcd055b2387b01700dc2"
+  }
+}

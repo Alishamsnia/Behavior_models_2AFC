@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "m4_fit_result_v1.schema.json",
+  "title": "M4 capped-tail HSMM single-start fit result",
+  "type": "object",
+  "required": [
+    "result_schema_version", "model_id", "mouse_id", "start_id",
+    "source_m3_start_id", "optimizer_strategy", "initial_constrained_parameters",
+    "initial_raw_parameters", "best_raw_parameters", "best_constrained_parameters",
+    "recalculated_best_training_mean_nll", "final_validation_mean_nll",
+    "converged", "convergence_checks", "projection_acceptable",
+    "tail_occupancy_acceptable", "training_mean_tail_probability_pre",
+    "training_maximum_tail_probability_pre", "validation_mean_tail_probability_pre",
+    "validation_maximum_tail_probability_pre",
+    "boundary_proximity", "history", "training_session_ids",
+    "validation_session_ids", "registry_config_sha256", "optimizer_settings", "runtime"
+  ],
+  "properties": {
+    "result_schema_version": {"const": "m4_fit_result_v1"},
+    "model_id": {"const": "M4_hsmm_delta_v1"},
+    "mouse_id": {"type": "string", "minLength": 1},
+    "start_id": {"type": "integer", "minimum": 1, "maximum": 8},
+    "source_m3_start_id": {"type": "integer", "minimum": 1, "maximum": 8},
+    "optimizer_strategy": {"enum": ["adam", "lbfgs", "hybrid"]},
+    "initial_constrained_parameters": {"$ref": "#/$defs/nineVector"},
+    "initial_raw_parameters": {"$ref": "#/$defs/nineVector"},
+    "best_raw_parameters": {"$ref": "#/$defs/nineVector"},
+    "best_constrained_parameters": {"$ref": "#/$defs/nineVector"},
+    "final_raw_parameters": {"$ref": "#/$defs/nineVector"},
+    "final_constrained_parameters": {"$ref": "#/$defs/nineVector"},
+    "recalculated_best_training_mean_nll": {"type": "number"},
+    "final_validation_mean_nll": {"type": "number"},
+    "converged": {"type": "boolean"},
+    "convergence_checks": {"type": "array"},
+    "projection_acceptable": {"type": "boolean"},
+    "tail_occupancy_acceptable": {"type": "boolean"},
+    "training_mean_tail_probability_pre": {"type": "number", "minimum": 0, "maximum": 1},
+    "training_maximum_tail_probability_pre": {"type": "number", "minimum": 0, "maximum": 1},
+    "validation_mean_tail_probability_pre": {"type": "number", "minimum": 0, "maximum": 1},
+    "validation_maximum_tail_probability_pre": {"type": "number", "minimum": 0, "maximum": 1},
+    "boundary_proximity": {
+      "type": "object",
+      "required": ["hazard_fraction_to_nearest_boundary", "alpha_theta_fraction_to_nearest_boundary", "bh_from_zero"],
+      "properties": {"bh_from_zero": {"type": "number", "minimum": 0}}
+    },
+    "history": {"type": "array", "items": {"type": "object"}},
+    "training_session_ids": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+    "validation_session_ids": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+    "registry_config_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "optimizer_settings": {
+      "type": "object",
+      "required": ["strategy", "adam", "lbfgs", "full_batch", "backend"],
+      "properties": {"full_batch": {"const": true}, "backend": {"const": "torch"}}
+    },
+    "runtime": {
+      "type": "object",
+      "required": ["python", "torch", "device", "dtype"],
+      "properties": {"dtype": {"const": "torch.float64"}}
+    }
+  },
+  "$defs": {
+    "nineVector": {
+      "type": "array", "items": {"type": "number"}, "minItems": 9, "maxItems": 9
+    }
+  }
+}

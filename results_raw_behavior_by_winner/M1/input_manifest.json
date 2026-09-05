@@ -1,0 +1,48 @@
+{
+  "model_id": "M1",
+  "created_at": "2026-08-23T17:37:12.350719+03:00",
+  "raw_behavior_root": "/home/ihsan/Desktop/data/Georgia_Tech/2AFC/Codes/Behavior/New_version",
+  "n_sessions_won": 4,
+  "subjects": {
+    "MC06": {
+      "source_csv": "/home/ihsan/Desktop/data/Georgia_Tech/2AFC/Codes/Behavior/New_version/MC06_final_data.csv",
+      "source_trial_count": 14743,
+      "n_sessions_won": 4,
+      "sessions": [
+        {
+          "raw_session_idx": 17,
+          "session_date": "20260115",
+          "chronological_rank": 16,
+          "session_id": "MC06_SChR2_block_single_interval_discrimination_V_1_20260115_154411"
+        },
+        {
+          "raw_session_idx": 27,
+          "session_date": "20260203",
+          "chronological_rank": 26,
+          "session_id": "MC06_SChR2_block_single_interval_discrimination_V_1_20260203_140921"
+        },
+        {
+          "raw_session_idx": 31,
+          "session_date": "20260210",
+          "chronological_rank": 30,
+          "session_id": "MC06_SChR2_block_single_interval_discrimination_V_1_20260210_152859"
+        },
+        {
+          "raw_session_idx": 44,
+          "session_date": "20260303",
+          "chronological_rank": 43,
+          "session_id": "MC06_SChR2_block_single_interval_discrimination_V_1_20260303_152200"
+        }
+      ],
+      "filtered_trial_count": 1285,
+      "filtered_csv": "/home/ihsan/Desktop/data/Georgia_Tech/2AFC/Codes/Model_behavior/Bayesian_model_v2/results_raw_behavior_by_winner/M1/MC06_final_data.csv"
+    }
+  },
+  "pooled_csv": "/home/ihsan/Desktop/data/Georgia_Tech/2AFC/Codes/Model_behavior/Bayesian_model_v2/results_raw_behavior_by_winner/M1/all_subjects_final_data.csv",
+  "pooled_trial_count": 1285,
+  "pooled_session_count": 4,
+  "status": "ok",
+  "pooled_subjects": [
+    "MC06"
+  ]
+}

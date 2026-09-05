@@ -1,0 +1,28 @@
+{
+  "model_id": "M4_hsmm_delta_v1",
+  "table_version": "m4_directional_lapse_kappa_exact_m3_plus_bh_v3",
+  "frozen": true,
+  "generation_policy": "extend_each_registered_M3_v5_start_by_id_with_one_positive_bh",
+  "parameter_order": ["w", "s0", "ell_short", "ell_long", "kappa", "ah", "delta0", "alpha_theta", "bh"],
+  "duration_unit": "seconds",
+  "lapse_max": 1.0,
+  "m3_source": {
+    "file": "config/initializations/m3_hmm_delta_v1_starts.json",
+    "table_version": "m3_directional_lapse_kappa_exact_m2_plus_alpha_theta_v5",
+    "sha256": "f6edfdb34e13b29805f9f66c975630663b9584da8b172d8461ce5ecc70b71f28"
+  },
+  "bh_assignment_by_start_id": {
+    "1": 0.02, "2": 0.05, "3": 0.10, "4": 0.20,
+    "5": 0.40, "6": 0.08, "7": 0.30, "8": 0.01
+  },
+  "starts": [
+    {"start_id": 1, "source_m3_start_id": 1, "w": 0.0271, "s0": 0.555, "ell_short": 0.03, "ell_long": 0.03, "kappa": 1.0, "ah": -3.367295829986932, "delta0": 1.3862943611198906, "alpha_theta": 0.02, "bh": 0.02, "purpose": "Exact M3-v5 start 1 plus broad positive duration slope"},
+    {"start_id": 2, "source_m3_start_id": 2, "w": 0.005, "s0": 0.7, "ell_short": 0.135, "ell_long": 0.015, "kappa": 0.5, "ah": -4.59511985013459, "delta0": 1.3862943611198906, "alpha_theta": 0.001, "bh": 0.05, "purpose": "Exact M3-v5 start 2 plus broad duration slope"},
+    {"start_id": 3, "source_m3_start_id": 3, "w": 0.01, "s0": 1.2, "ell_short": 0.0105, "ell_long": 0.0195, "kappa": 2.0, "ah": -3.8918202981106265, "delta0": 1.3862943611198906, "alpha_theta": 0.005, "bh": 0.10, "purpose": "Exact M3-v5 start 3 plus moderate duration slope"},
+    {"start_id": 4, "source_m3_start_id": 4, "w": 0.02, "s0": 0.25, "ell_short": 0.224, "ell_long": 0.056, "kappa": 0.75, "ah": -2.9444389791664403, "delta0": 1.3862943611198906, "alpha_theta": 0.01, "bh": 0.20, "purpose": "Exact M3-v5 start 4 plus concentrated duration slope"},
+    {"start_id": 5, "source_m3_start_id": 5, "w": 0.04, "s0": 0.9, "ell_short": 0.002, "ell_long": 0.008, "kappa": 1.3333333333333333, "ah": -2.4423470353692043, "delta0": 1.3862943611198906, "alpha_theta": 0.03, "bh": 0.40, "purpose": "Exact M3-v5 start 5 plus sharp duration slope"},
+    {"start_id": 6, "source_m3_start_id": 6, "w": 0.07, "s0": 0.15, "ell_short": 0.13, "ell_long": 0.07, "kappa": 0.9, "ah": -1.9924301646902063, "delta0": 1.3862943611198906, "alpha_theta": 0.05, "bh": 0.08, "purpose": "Exact M3-v5 start 6 plus moderate-broad duration slope"},
+    {"start_id": 7, "source_m3_start_id": 7, "w": 0.12, "s0": 0.45, "ell_short": 0.036, "ell_long": 0.324, "kappa": 1.1111111111111112, "ah": -1.3862943611198906, "delta0": 1.3862943611198906, "alpha_theta": 0.075, "bh": 0.30, "purpose": "Exact M3-v5 start 7 plus sharp duration slope"},
+    {"start_id": 8, "source_m3_start_id": 8, "w": 0.2, "s0": 0.35, "ell_short": 0.098, "ell_long": 0.002, "kappa": 1.0, "ah": -0.6190392084062235, "delta0": 1.3862943611198906, "alpha_theta": 0.1, "bh": 0.01, "purpose": "Exact M3-v5 start 8 plus near-constant duration slope"}
+  ]
+}

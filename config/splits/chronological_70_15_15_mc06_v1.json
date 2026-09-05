@@ -1,0 +1,36 @@
+{
+  "split_version": "chronological_70_15_15_mc06_v1",
+  "policy": "chronological_per_mouse_largest_remainder",
+  "proportions": {
+    "train": 0.7,
+    "validation": 0.15,
+    "test": 0.15
+  },
+  "tie_priority": [
+    "test",
+    "validation",
+    "train"
+  ],
+  "assignment_file": "chronological_70_15_15_mc06_v1.csv",
+  "assignment_sha256": "9feda5d0911b7f7f0eb464fdb8ef209a6f041cdbcc3ceaef5ce670b5dff41fef",
+  "source": "Legacy-eligible sessions from the exact 45 commented MC06 DATA_PATHS in Model_v24_validation.ipynb",
+  "source_session_manifest": "../subjects/mc06_model_v24_commented_sessions.json",
+  "excluded_before_split": [
+    {
+      "session_id": "MC06_SChR2_block_single_interval_discrimination_V_1_20251222_134238",
+      "n_short_isi_levels": 6,
+      "n_long_isi_levels": 6,
+      "exclusion_reason": "legacy_isi_bin_requirement"
+    }
+  ],
+  "counts_by_mouse": {
+    "MC06": {
+      "total": 44,
+      "train": 31,
+      "validation": 6,
+      "test": 7
+    }
+  },
+  "locked_test_evaluated": false,
+  "test_lock_note": "Test session IDs must not enter training or validation evaluation until the subject model and analysis choices are frozen."
+}

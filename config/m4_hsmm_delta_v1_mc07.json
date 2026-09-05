@@ -1,0 +1,7 @@
+{
+  "extends": "m4_hsmm_delta_v1.json",
+  "source_m3_registry": {
+    "file": "config/m3_hmm_delta_v1_mc07.json",
+    "sha256": "384338699d9f55d81ed98ef8d0cdc00ba5f329ae7cd202cdd1ed9d21a182822d"
+  }
+}

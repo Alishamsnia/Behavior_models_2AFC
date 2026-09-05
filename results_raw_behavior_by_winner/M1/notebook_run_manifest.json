@@ -1,0 +1,112 @@
+{
+  "model_id": "M1",
+  "status": "ok",
+  "started_at": "2026-08-23T17:10:52.110597+03:00",
+  "notebooks_requested": [
+    "performance_pooled_grand_average.ipynb",
+    "psychometric_analysis.ipynb",
+    "learning_curve.ipynb",
+    "licking_analysis.ipynb",
+    "rare_trials_analysis.ipynb",
+    "meta_learning_transition_analysis.ipynb"
+  ],
+  "notebook_runs": {
+    "performance_pooled_grand_average.ipynb": {
+      "status": "completed",
+      "started_at": "2026-08-23T17:10:52.181504+03:00",
+      "finished_at": "2026-08-23T17:13:11.723291+03:00",
+      "elapsed_seconds": 139.541787,
+      "executed_notebook": "/home/ihsan/Desktop/data/Georgia_Tech/2AFC/Codes/Model_behavior/Bayesian_model_v2/results_raw_behavior_by_winner/M1/executed_notebooks/performance_pooled_grand_average.ipynb",
+      "created_files": [
+        "block_endpoint_trials_5_to_11_vs_last_7_pages_5_8.pdf",
+        "block_length_distributions.pdf",
+        "block_segment_performance_changes.pdf",
+        "choice_bias_relative_to_neutral.pdf",
+        "context_benefit_cost_by_isi_bin.pdf",
+        "context_benefit_cost_by_session.pdf",
+        "performance_pooled_grand_average.pdf",
+        "rare_difficulty_early_late_performance_changes.pdf",
+        "rewarded_fraction_by_psychometric_bin.pdf"
+      ],
+      "error": null
+    },
+    "psychometric_analysis.ipynb": {
+      "status": "completed",
+      "started_at": "2026-08-23T17:13:11.790986+03:00",
+      "finished_at": "2026-08-23T17:15:14.785783+03:00",
+      "elapsed_seconds": 122.994797,
+      "executed_notebook": "/home/ihsan/Desktop/data/Georgia_Tech/2AFC/Codes/Model_behavior/Bayesian_model_v2/results_raw_behavior_by_winner/M1/executed_notebooks/psychometric_analysis.ipynb",
+      "created_files": [
+        "consecutive_streak_next_trial_psychometrics.pdf",
+        "early_late_block_analysis.pdf",
+        "early_late_block_analysis_balanced.pdf",
+        "immediate_post_outcome_psychometrics.pdf",
+        "next_trial_after_rare_standard_psychometrics.pdf",
+        "pooled_grand_subject_joint_block_psychometrics.pdf",
+        "pooled_grand_subject_psychometrics.pdf",
+        "rare_reward_punish_early_late_sliding_psychometrics.pdf",
+        "reverse_pooled_psychometrics.pdf",
+        "sequence_outcome_matched_psychometrics.pdf",
+        "sliding_window_after_rare_standard_psychometrics.pdf"
+      ],
+      "error": null
+    },
+    "learning_curve.ipynb": {
+      "status": "completed",
+      "started_at": "2026-08-23T17:15:14.818225+03:00",
+      "finished_at": "2026-08-23T17:15:40.079329+03:00",
+      "elapsed_seconds": 25.261104,
+      "executed_notebook": "/home/ihsan/Desktop/data/Georgia_Tech/2AFC/Codes/Model_behavior/Bayesian_model_v2/results_raw_behavior_by_winner/M1/executed_notebooks/learning_curve.ipynb",
+      "created_files": [
+        "block_transition_dynamics_smoothed.pdf",
+        "transition_adaptation_extra.pdf",
+        "transition_adaptation_summary.pdf",
+        "ws_ls_stay_probability_by_block_transition.pdf"
+      ],
+      "error": null
+    },
+    "licking_analysis.ipynb": {
+      "status": "completed",
+      "started_at": "2026-08-23T17:15:40.123506+03:00",
+      "finished_at": "2026-08-23T17:16:19.036472+03:00",
+      "elapsed_seconds": 38.912966,
+      "executed_notebook": "/home/ihsan/Desktop/data/Georgia_Tech/2AFC/Codes/Model_behavior/Bayesian_model_v2/results_raw_behavior_by_winner/M1/executed_notebooks/licking_analysis.ipynb",
+      "created_files": [
+        "latency_choice_isi_outcome_nonnegative_grid.pdf",
+        "licking_analysis_figure.pdf",
+        "licking_analysis_no_negative_lick_trials.pdf",
+        "licking_latency_by_isi_mean_sem.pdf",
+        "licking_latency_by_isi_no_negative_lick_trials.pdf",
+        "licking_latency_histogram.pdf",
+        "licking_raster_and_average_trajectory.pdf",
+        "licking_raster_and_average_trajectory_no_negative_lick_trials.pdf",
+        "negative_lick_summary_pies.pdf"
+      ],
+      "error": null
+    },
+    "rare_trials_analysis.ipynb": {
+      "status": "completed",
+      "started_at": "2026-08-23T17:16:19.070247+03:00",
+      "finished_at": "2026-08-23T17:16:33.377968+03:00",
+      "elapsed_seconds": 14.307721,
+      "executed_notebook": "/home/ihsan/Desktop/data/Georgia_Tech/2AFC/Codes/Model_behavior/Bayesian_model_v2/results_raw_behavior_by_winner/M1/executed_notebooks/rare_trials_analysis.ipynb",
+      "created_files": [
+        "consecutive_rare_trial_run_distribution.pdf",
+        "rare_trial_prior_choice_sliding_window.pdf",
+        "rare_trials_analysis.pdf"
+      ],
+      "error": null
+    },
+    "meta_learning_transition_analysis.ipynb": {
+      "status": "completed",
+      "started_at": "2026-08-23T17:16:33.418442+03:00",
+      "finished_at": "2026-08-23T17:16:47.389663+03:00",
+      "elapsed_seconds": 13.971221,
+      "executed_notebook": "/home/ihsan/Desktop/data/Georgia_Tech/2AFC/Codes/Model_behavior/Bayesian_model_v2/results_raw_behavior_by_winner/M1/executed_notebooks/meta_learning_transition_analysis.ipynb",
+      "created_files": [
+        "meta_learning_transition_plateau.pdf"
+      ],
+      "error": null
+    }
+  }
+}

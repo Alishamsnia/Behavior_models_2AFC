@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "m0_fit_result_v1.schema.json",
+  "title": "M0 sensory v1 single-start fit result",
+  "type": "object",
+  "required": [
+    "result_schema_version",
+    "model_id",
+    "mouse_id",
+    "registry_config_sha256",
+    "model_registry_snapshot",
+    "training_session_ids",
+    "validation_session_ids",
+    "start_id",
+    "initial_constrained_parameters",
+    "initial_raw_parameters",
+    "best_raw_parameters",
+    "best_constrained_parameters",
+    "recalculated_best_training_mean_nll",
+    "final_validation_mean_nll",
+    "converged",
+    "convergence_checks",
+    "training_history",
+    "validation_history",
+    "boundary_proximity",
+    "random_seed"
+  ],
+  "properties": {
+    "result_schema_version": {"const": "m0_fit_result_v1"},
+    "model_id": {"const": "M0_sensory_v1"},
+    "mouse_id": {"type": "string", "minLength": 1},
+    "registry_config_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "model_registry_snapshot": {"type": "object"},
+    "training_session_ids": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+    "validation_session_ids": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+    "start_id": {"type": "integer", "minimum": 1, "maximum": 8},
+    "initial_constrained_parameters": {"$ref": "#/$defs/fiveVector"},
+    "initial_raw_parameters": {"$ref": "#/$defs/fiveVector"},
+    "best_raw_parameters": {"$ref": "#/$defs/fiveVector"},
+    "best_constrained_parameters": {"$ref": "#/$defs/fiveVector"},
+    "recalculated_best_training_mean_nll": {"type": "number"},
+    "final_validation_mean_nll": {"type": "number"},
+    "converged": {"type": "boolean"},
+    "convergence_checks": {"type": "array"},
+    "training_history": {"type": "array"},
+    "validation_history": {"type": "array"},
+    "boundary_proximity": {"type": "object"},
+    "random_seed": {"type": "integer", "minimum": 0}
+  },
+  "$defs": {
+    "fiveVector": {
+      "type": "array",
+      "prefixItems": [
+        {"type": "number"},
+        {"type": "number"},
+        {"type": "number"},
+        {"type": "number"},
+        {"type": "number"}
+      ],
+      "minItems": 5,
+      "maxItems": 5
+    }
+  }
+}

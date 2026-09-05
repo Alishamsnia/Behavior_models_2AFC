@@ -1,0 +1,39 @@
+{
+  "split_version": "chronological_70_15_15_mc07_v1",
+  "policy": "chronological_per_mouse_largest_remainder",
+  "proportions": {
+    "train": 0.7,
+    "validation": 0.15,
+    "test": 0.15
+  },
+  "tie_priority": [
+    "test",
+    "validation",
+    "train"
+  ],
+  "assignment_file": "chronological_70_15_15_mc07_v1.csv",
+  "assignment_sha256": "8673b21dc647e1d81b36c0bfba5a5fdd7333a9feb3312e33ef9ccaf5f92c92fc",
+  "source": "Legacy-eligible sessions from the exact 43 commented MC07 DATA_PATHS in Model_v24_validation.ipynb",
+  "source_session_manifest": "../subjects/mc07_model_v24_commented_sessions.json",
+  "excluded_before_split": [
+    {
+      "session_id": "MC07_SChR2_block_single_interval_discrimination_V_1_20251210_105817",
+      "n_short_isi_levels": 9,
+      "n_long_isi_levels": 9,
+      "exclusion_reason": "legacy_isi_bin_requirement"
+    }
+  ],
+  "counts_by_mouse": {
+    "MC07": {
+      "total": 42,
+      "train": 30,
+      "validation": 6,
+      "test": 6
+    }
+  },
+  "locked_test_evaluated": true,
+  "test_evaluated_on": "2026-08-07",
+  "test_analysis_manifest": "results/M0_sensory_v1/MC07_5000/preliminary_figures/figure_manifest.json",
+  "test_analysis_manifest_sha256": "d3a3595e3b0ae704f9a582157e1eb132ee50a4c7d7d0e53ced64481d4f7f3baa",
+  "test_unlock_note": "Explicitly authorized by the user's --unlock-test command after MC07 start 5 was selected as a converged winner."
+}

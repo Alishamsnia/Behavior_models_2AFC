@@ -1,0 +1,11 @@
+{
+  "argv": [
+    "/home/ihsan/Desktop/data/Georgia_Tech/2AFC/Codes/Behavior/New_version/.venv/bin/python3",
+    "-m",
+    "ipykernel_launcher",
+    "-f",
+    "{connection_file}"
+  ],
+  "display_name": "model_winner_analysis",
+  "language": "python"
+}

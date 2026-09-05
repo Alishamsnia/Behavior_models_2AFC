@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "m3_fit_result_v1.schema.json",
+  "title": "M3 delta-learning single-start fit result",
+  "type": "object",
+  "required": [
+    "result_schema_version", "model_id", "mouse_id", "start_id",
+    "source_m2_start_id", "optimizer_strategy", "initial_constrained_parameters",
+    "initial_raw_parameters", "best_raw_parameters", "best_constrained_parameters",
+    "recalculated_best_training_mean_nll", "final_validation_mean_nll",
+    "converged", "convergence_checks", "projection_acceptable",
+    "training_projection_activation_count", "training_projection_fraction",
+    "training_projection_locations", "training_projection_events",
+    "validation_projection_activation_count", "validation_projection_fraction",
+    "validation_projection_locations", "validation_projection_events",
+    "boundary_proximity", "history", "training_session_ids",
+    "validation_session_ids", "registry_config_sha256", "optimizer_settings",
+    "runtime"
+  ],
+  "properties": {
+    "result_schema_version": {"const": "m3_fit_result_v1"},
+    "model_id": {"const": "M3_hmm_delta_v1"},
+    "mouse_id": {"type": "string", "minLength": 1},
+    "start_id": {"type": "integer", "minimum": 1, "maximum": 8},
+    "source_m2_start_id": {"type": "integer", "minimum": 1, "maximum": 8},
+    "start_purpose": {"type": "string", "minLength": 1},
+    "random_seed": {"type": "integer", "minimum": 0},
+    "optimizer_strategy": {"enum": ["adam", "lbfgs", "hybrid"]},
+    "initial_constrained_parameters": {"$ref": "#/$defs/eightVector"},
+    "initial_raw_parameters": {"$ref": "#/$defs/eightVector"},
+    "initial_training_mean_nll": {"type": "number"},
+    "initial_validation_mean_nll": {"type": "number"},
+    "best_raw_parameters": {"$ref": "#/$defs/eightVector"},
+    "best_constrained_parameters": {"$ref": "#/$defs/eightVector"},
+    "best_fresh_training_mean_nll": {"type": "number"},
+    "recalculated_best_training_mean_nll": {"type": "number"},
+    "final_raw_parameters": {"$ref": "#/$defs/eightVector"},
+    "final_constrained_parameters": {"$ref": "#/$defs/eightVector"},
+    "fresh_final_training_mean_nll": {"type": "number"},
+    "final_validation_mean_nll": {"type": "number"},
+    "gradient_norm_at_final": {"type": "number"},
+    "final_step": {"type": "integer", "minimum": 0},
+    "best_step": {"type": "integer", "minimum": 0},
+    "best_optimizer_phase": {"type": "string"},
+    "adam_step_count": {"type": "integer", "minimum": 0},
+    "lbfgs_step_count": {"type": "integer", "minimum": 0},
+    "objective_evaluation_count": {"type": "integer", "minimum": 1},
+    "termination_reason": {"type": "string"},
+    "converged": {"type": "boolean"},
+    "convergence_checks": {"type": "array", "items": {"$ref": "#/$defs/namedCheck"}},
+    "projection_acceptable": {"type": "boolean"},
+    "training_projection_activation_count": {"type": "integer", "minimum": 0},
+    "training_projection_fraction": {"type": "number", "minimum": 0, "maximum": 1},
+    "training_projection_locations": {"$ref": "#/$defs/sessionLocations"},
+    "training_projection_events": {"$ref": "#/$defs/sessionEvents"},
+    "validation_projection_activation_count": {"type": "integer", "minimum": 0},
+    "validation_projection_fraction": {"type": "number", "minimum": 0, "maximum": 1},
+    "validation_projection_locations": {"$ref": "#/$defs/sessionLocations"},
+    "validation_projection_events": {"$ref": "#/$defs/sessionEvents"},
+    "boundary_proximity": {"type": "object"},
+    "history": {"type": "array", "items": {"type": "object"}},
+    "training_session_ids": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+    "validation_session_ids": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+    "registry_config_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "optimizer_settings": {
+      "type": "object",
+      "required": ["strategy", "adam", "lbfgs", "full_batch", "backend"],
+      "properties": {
+        "strategy": {"enum": ["adam", "lbfgs", "hybrid"]},
+        "adam": {"type": "object"},
+        "lbfgs": {"type": "object"},
+        "full_batch": {"const": true},
+        "backend": {"const": "torch"}
+      }
+    },
+    "exception_message": {"type": ["string", "null"]},
+    "runtime": {
+      "type": "object",
+      "required": ["python", "torch", "device", "dtype"],
+      "properties": {
+        "python": {"type": "string"}, "torch": {"type": "string"},
+        "device": {"type": "string"}, "dtype": {"const": "torch.float64"}
+      }
+    }
+  },
+  "$defs": {
+    "eightVector": {
+      "type": "array", "items": {"type": "number"}, "minItems": 8, "maxItems": 8
+    },
+    "namedCheck": {
+      "type": "array", "prefixItems": [{"type": "string"}, {"type": "boolean"}],
+      "minItems": 2, "maxItems": 2
+    },
+    "sessionLocations": {
+      "type": "array", "items": {
+        "type": "array", "prefixItems": [
+          {"type": "string"}, {"type": "array", "items": {"type": "integer", "minimum": 1}}
+        ], "minItems": 2, "maxItems": 2
+      }
+    },
+    "projectionEvent": {
+      "type": "object",
+      "required": [
+        "mouse_id", "session_id", "trial_index", "category_long", "delta_pre",
+        "update_signal", "alpha_theta", "unprojected_proposal", "projected_delta",
+        "responsibility_short", "responsibility_long", "prototype_short", "prototype_long"
+      ],
+      "properties": {
+        "mouse_id": {"type": "string"}, "session_id": {"type": "string"},
+        "trial_index": {"type": "integer", "minimum": 1},
+        "category_long": {"enum": [0, 1]}, "delta_pre": {"type": "number"},
+        "update_signal": {"type": "number"}, "alpha_theta": {"type": "number"},
+        "unprojected_proposal": {"type": "number"}, "projected_delta": {"type": "number"},
+        "responsibility_short": {"type": "number"}, "responsibility_long": {"type": "number"},
+        "prototype_short": {"type": "number"}, "prototype_long": {"type": "number"}
+      }
+    },
+    "sessionEvents": {
+      "type": "array", "items": {
+        "type": "array", "prefixItems": [
+          {"type": "string"}, {"type": "array", "items": {"$ref": "#/$defs/projectionEvent"}}
+        ], "minItems": 2, "maxItems": 2
+      }
+    }
+  }
+}

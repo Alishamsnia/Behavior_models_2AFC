@@ -1,0 +1,72 @@
+{
+  "extends": "m2_hmm_static_v1.json",
+  "model_id": "M3_hmm_delta_v1",
+  "scientific_alias": "M_HMM,delta",
+  "software_version": "0.4.2",
+  "implemented_scope": "responsibility-weighted constant-step delta learner with constant hazard",
+  "parameter_order": ["w", "s0", "ell_short", "ell_long", "kappa", "ah", "delta0", "alpha_theta"],
+  "session_policy": "independent_dynamic_episode_reset_to_neutral_and_delta0",
+  "hmm": {
+    "prototype_parameterization": "online_symmetric_positive_delta",
+    "prototype_use": "same_preupdate_subjective_prototypes_in_choice_prior_and_category_emission",
+    "prototype_learning": true,
+    "learning_rule": "responsibility_weighted_constant_step_in_delta_coordinates",
+    "responsibility": "post_feedback_block_posterior",
+    "hazard": "biased_hazard_sigmoid_ah_with_tied_neutral_hazard",
+    "neutral_hazard_scale": 0.5,
+    "within_trial_order": "predict_then_emission_update_then_delta_update_then_transition",
+    "session_delta_reset": "delta1_equals_delta0",
+    "delta_min": 0.000001,
+    "maximum_accepted_projection_fraction": 0.001
+  },
+  "empirical_block_length_reference": {
+    "median_trials": 23,
+    "inverse_median_hazard": 0.043478260869565216,
+    "use": "recovery_grid_and_diagnostics_only",
+    "fitted_hazard_remains_free": true,
+    "initialization_table_remains_exactly_m2": true
+  },
+  "initialization_table": {
+    "version": "m3_directional_lapse_kappa_exact_m2_plus_alpha_theta_v5",
+    "file": "config/initializations/m3_hmm_delta_v1_starts.json",
+    "sha256": "f6edfdb34e13b29805f9f66c975630663b9584da8b172d8461ce5ecc70b71f28",
+    "count": 8,
+    "generation_policy": "extend_each_registered_M2_start_by_id_with_one_explicit_alpha_theta"
+  },
+  "m3_fitting": {
+    "default_optimizer": "adam",
+    "supported_optimizers": ["adam", "lbfgs", "hybrid"],
+    "pdf_recommended_optimizer": "full_batch_lbfgs",
+    "lbfgs_maximum_steps": 250,
+    "lbfgs_learning_rate": 1.0,
+    "lbfgs_history_size": 10,
+    "lbfgs_maximum_evaluations_per_step": 20,
+    "lbfgs_tolerance_grad": 1e-09,
+    "lbfgs_tolerance_change": 1e-12,
+    "lbfgs_line_search_fn": "strong_wolfe",
+    "optional_adam_warmup_steps": 100,
+    "optional_adam_learning_rate": 0.01,
+    "fresh_final_objective_required": true,
+    "training_only_winner_selection": true
+  },
+  "multi_start_selection": {
+    "parameter_distance_scale": [0.2, 1.2, 0.2, 1.0, 1.0, 2.0, 1.5, 0.2],
+    "result_schema_version": "m3_fit_result_v1"
+  },
+  "metrics": {
+    "primary": ["elpd", "mean_nll_per_valid_trial", "delta_bits_per_trial_vs_m2"],
+    "diagnostics": [
+      "calibration_curve",
+      "overall_psychometric_curve",
+      "per_session_mean_nll",
+      "prediction_distribution",
+      "block_belief_trajectory",
+      "trialwise_prior_long",
+      "trialwise_delta_and_prototypes",
+      "responsibility_weighted_update_signal",
+      "projection_activation_count_and_locations",
+      "hazard_boundary_proximity",
+      "probability_assigned_to_true_block_diagnostic_only"
+    ]
+  }
+}

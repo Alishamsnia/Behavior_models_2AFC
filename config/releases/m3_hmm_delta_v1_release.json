@@ -1,0 +1,49 @@
+{
+  "release_id": "m3_hmm_delta_v1_release_2026-08-20_directional_lapse_kappa",
+  "model_id": "M3_hmm_delta_v1",
+  "software_version": "0.4.2",
+  "precision": "float64",
+  "optimizer_backend": "torch",
+  "full_batch_optimizers": [
+    "adam",
+    "lbfgs",
+    "hybrid"
+  ],
+  "decision_bias": "positive kappa with additive -log(kappa) in Bayesian log odds; kappa=1 is neutral",
+  "test_status": {
+    "framework": "unittest",
+    "mode": "targeted_smoke",
+    "tests_run": 16,
+    "failures": 0
+  },
+  "pre_m3_regression_reference": {
+    "path": "config/releases/m0_m1_m2_tied_neutral_hazard_reference_predictions_v2.json",
+    "sha256": "c244305c62db30fc4e0ae0eac0143911aa209a4281e039d19ab25ab99dc0220c"
+  },
+  "artifacts": {
+    "config/m1_hmm_true_v1.json": "fa3ac76f05a6884c32c681c3ff1b1c49607f36009461a14e334880d0645a02c4",
+    "config/m2_hmm_static_v1.json": "a0782df0b0a8c56c8323e658b98bcffc78a7e305a787695a9dbf849bd5638aa2",
+    "config/m3_hmm_delta_v1.json": "013f0b89a57d50ec51d27caebabb46e3a25a6540ebf54653acfe795cadd39e59",
+    "config/m3_hmm_delta_v1_mc06.json": "bc2aa486e267033a81be452d448b587f2604138bd4592bfee0288b9dc34b7ff4",
+    "config/m3_hmm_delta_v1_mc07.json": "384338699d9f55d81ed98ef8d0cdc00ba5f329ae7cd202cdd1ed9d21a182822d",
+    "config/initializations/m3_hmm_delta_v1_starts.json": "f6edfdb34e13b29805f9f66c975630663b9584da8b172d8461ce5ecc70b71f28",
+    "config/schemas/m3_fit_result_v1.schema.json": "02044a63ac60316767a63411b9cc6f0fd6510293503f8ea93c9fb14a8bebff89",
+    "docs/models/M3_hmm_delta_v1.md": "d4bd0432b3ac9617e0149a49a4741c56165b7679bcbe9a18faa8722eafb2ee68",
+    "docs/reports/M3_IMPLEMENTATION_VERIFICATION.md": "6b6fb91aacf1ad63ed8f51c486f635077dff8956088ecbd8245a22ce46d10eac",
+    "scripts/fit_m3.py": "61729c35eed82bdb7b413aa8c6eedbc86fb023626e27d223ec97c1471b81e1fe",
+    "src/m3_hmm_delta_v1/__init__.py": "6f539346b246c603dc02bfb7490eaae1b45521c60717d99d20c897fae08318bd",
+    "src/m0_sensory_v1/model/m1_session.py": "63d3c69497a651c1af3e91bf686b6f54b566beb3a4095c187c97543599e05788",
+    "src/m3_hmm_delta_v1/analysis.py": "2fddae951c9fee4c4fb3573c37ca0e20923307605f259b1c7e08e09516282a37",
+    "src/m3_hmm_delta_v1/figures.py": "cf81c61f13d6bc2311de4f4b7bcc4614466fc633d5f33150cc7afe7e4be13394",
+    "src/m3_hmm_delta_v1/fit.py": "30c77c86f8f62c030fe6bb7a40ecc27f550bd8d921e8c0d6726a3f44dda79d9f",
+    "src/m3_hmm_delta_v1/identifiability.py": "ad46735d7e5bcf62c249d17d73fc981de7395f1b2be93ba3eec2752d0d3d8db6",
+    "src/m3_hmm_delta_v1/initialization.py": "841e17293308699b42ac5c3009e6f79e13d6f240c6dc5ed4b6205861840de280",
+    "src/m3_hmm_delta_v1/m0_style_figures.py": "01e20a1b3f2b118c3030e0696cd9acc3d619302d8944913015fa9948deffa16d",
+    "src/m3_hmm_delta_v1/parameters.py": "e6759c0780d6d2d77eb65e071eb71deae2421ef7bf260b4ebf6b226bdecdf509",
+    "src/m3_hmm_delta_v1/pipeline.py": "e01f3947f88b5d312021a0ba1c6ffb6061f389420afbbaa85b58472045d68652",
+    "src/m3_hmm_delta_v1/recovery.py": "af9e459e250775e32a71470f77ffd91f92cf19908695fbd0191001ba2c05c221",
+    "src/m3_hmm_delta_v1/registry.py": "e7481591b8852f01ac988fd8128e1b265f03e482d0d6b595a081814cbc892ec5",
+    "src/m3_hmm_delta_v1/session.py": "d267cd2afc1cd39fdb264f3a6a7a6127b1112b147ea4a9785a55b2fe9158e9b3",
+    "src/m3_hmm_delta_v1/simulation.py": "7f1736f87de733a3d41b0d4cb1acb9eb3803a8e1b9b20145672e0d6c793b8f22"
+  }
+}

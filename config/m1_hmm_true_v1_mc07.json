@@ -1,0 +1,21 @@
+{
+  "extends": "m1_hmm_true_v1.json",
+  "split": {
+    "version": "chronological_70_15_15_mc07_v1",
+    "assignment_file": "config/splits/chronological_70_15_15_mc07_v1.csv"
+  },
+  "task_moments": {
+    "mu_short_s": 0.5007224168126095,
+    "mu_long_s": 2.001947470526787,
+    "var_short_s2": 0.045061868656856054,
+    "var_long_s2": 0.04542935166536714,
+    "n_short": 6852,
+    "n_long": 6701,
+    "min_short_s": 0.2,
+    "max_short_s": 0.8,
+    "min_long_s": 1.7,
+    "max_long_s": 2.3,
+    "variance_ddof": 0,
+    "source": "MC07 frozen M0 task moments shared by M1"
+  }
+}

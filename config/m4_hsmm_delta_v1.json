@@ -1,0 +1,63 @@
+{
+  "model_id": "M4_hsmm_delta_v1",
+  "scientific_alias": "M_HSMM,delta",
+  "registry_schema_version": "1.0",
+  "software_version": "0.1.1",
+  "implemented_scope": "capped-tail duration-aware responsibility-weighted delta learner",
+  "source_m3_registry": {
+    "file": "config/m3_hmm_delta_v1.json",
+    "sha256": "013f0b89a57d50ec51d27caebabb46e3a25a6540ebf54653acfe795cadd39e59"
+  },
+  "parameter_order": ["w", "s0", "ell_short", "ell_long", "kappa", "ah", "delta0", "alpha_theta", "bh"],
+  "session_policy": "independent_dynamic_episode_reset_to_neutral_run1_and_delta0",
+  "hsmm": {
+    "state_order": ["N", "S", "L"],
+    "run_length_center": 23,
+    "maximum_represented_run_length": 65,
+    "tail_state_semantics": "r65_represents_R_greater_than_or_equal_to_65",
+    "tail_hazard_policy": "hazard_saturates_at_h65_and_survival_remains_in_tail",
+    "hazard": "biased_sigmoid_ah_plus_bh_times_minR65_minus_23_with_tied_neutral_half_hazard",
+    "neutral_hazard_scale": 0.5,
+    "common_hazard_across_neutral_and_biased_states": false,
+    "neutral_reentry": false,
+    "biased_switch_rule": "S_to_L_and_L_to_S_only",
+    "within_trial_order": "predict_then_emission_update_then_delta_update_then_hsmm_transition",
+    "exact_m3_boundary": "explicit_bh_zero",
+    "true_block_predictive_input": false,
+    "true_run_length_predictive_input": false
+  },
+  "tail_acceptance": {
+    "statistic": "mean_pre_choice_tail_probability_across_all_training_timeline_trials",
+    "maximum_accepted_value": 0.01,
+    "required_for_convergence_and_winner_eligibility": true,
+    "rationale": "more_than_one_percent_expected_tail_occupancy_can_materially_identify_bh_from_the_frozen_h65_approximation"
+  },
+  "initialization_table": {
+    "version": "m4_directional_lapse_kappa_exact_m3_plus_bh_v3",
+    "file": "config/initializations/m4_hsmm_delta_v1_starts.json",
+    "sha256": "8af302009dd71ff4d11a9b259ee6596650f6e5b58ea1f91807b6d123759c7ba1",
+    "count": 8,
+    "generation_policy": "extend_each_registered_M3_v5_start_by_id_with_one_positive_bh"
+  },
+  "multi_start_selection": {
+    "parameter_distance_scale": [0.2, 1.2, 0.2, 1.0, 1.0, 2.0, 1.5, 0.1, 0.2],
+    "result_schema_version": "m4_fit_result_v1"
+  },
+  "metrics": {
+    "primary": ["elpd", "mean_nll_per_valid_trial", "delta_bits_per_trial_vs_m3"],
+    "diagnostics": [
+      "calibration_curve",
+      "overall_psychometric_curve",
+      "per_session_mean_nll",
+      "trialwise_prior_long",
+      "block_belief_trajectory",
+      "run_length_distribution",
+      "expected_inferred_run_length",
+      "expected_switch_hazard",
+      "tail_state_probability",
+      "trialwise_delta_and_prototypes",
+      "projection_activation_count_and_locations",
+      "probability_assigned_to_true_block_diagnostic_only"
+    ]
+  }
+}

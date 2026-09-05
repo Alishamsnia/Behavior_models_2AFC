@@ -1,0 +1,7 @@
+results_sliding_window/
+results_single_session/
+results_post_analysis/
+raw_behavior_by_winner/results/
+**/__pycache__/
+*.pyc
+.ipynb_checkpoints/

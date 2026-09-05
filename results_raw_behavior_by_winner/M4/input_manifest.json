@@ -1,0 +1,66 @@
+{
+  "model_id": "M4",
+  "created_at": "2026-08-23T17:37:17.300069+03:00",
+  "raw_behavior_root": "/home/ihsan/Desktop/data/Georgia_Tech/2AFC/Codes/Behavior/New_version",
+  "n_sessions_won": 7,
+  "subjects": {
+    "MC06": {
+      "source_csv": "/home/ihsan/Desktop/data/Georgia_Tech/2AFC/Codes/Behavior/New_version/MC06_final_data.csv",
+      "source_trial_count": 14743,
+      "n_sessions_won": 7,
+      "sessions": [
+        {
+          "raw_session_idx": 19,
+          "session_date": "20260121",
+          "chronological_rank": 18,
+          "session_id": "MC06_SChR2_block_single_interval_discrimination_V_1_20260121_143350"
+        },
+        {
+          "raw_session_idx": 25,
+          "session_date": "20260130",
+          "chronological_rank": 24,
+          "session_id": "MC06_SChR2_block_single_interval_discrimination_V_1_20260130_111626"
+        },
+        {
+          "raw_session_idx": 26,
+          "session_date": "20260202",
+          "chronological_rank": 25,
+          "session_id": "MC06_SChR2_block_single_interval_discrimination_V_1_20260202_143727"
+        },
+        {
+          "raw_session_idx": 30,
+          "session_date": "20260209",
+          "chronological_rank": 29,
+          "session_id": "MC06_SChR2_block_single_interval_discrimination_V_1_20260209_110037"
+        },
+        {
+          "raw_session_idx": 34,
+          "session_date": "20260213",
+          "chronological_rank": 33,
+          "session_id": "MC06_SChR2_block_single_interval_discrimination_V_1_20260213_105123"
+        },
+        {
+          "raw_session_idx": 38,
+          "session_date": "20260220",
+          "chronological_rank": 37,
+          "session_id": "MC06_SChR2_block_single_interval_discrimination_V_1_20260220_110558"
+        },
+        {
+          "raw_session_idx": 42,
+          "session_date": "20260227",
+          "chronological_rank": 41,
+          "session_id": "MC06_SChR2_block_single_interval_discrimination_V_1_20260227_115418"
+        }
+      ],
+      "filtered_trial_count": 2268,
+      "filtered_csv": "/home/ihsan/Desktop/data/Georgia_Tech/2AFC/Codes/Model_behavior/Bayesian_model_v2/results_raw_behavior_by_winner/M4/MC06_final_data.csv"
+    }
+  },
+  "pooled_csv": "/home/ihsan/Desktop/data/Georgia_Tech/2AFC/Codes/Model_behavior/Bayesian_model_v2/results_raw_behavior_by_winner/M4/all_subjects_final_data.csv",
+  "pooled_trial_count": 2268,
+  "pooled_session_count": 7,
+  "status": "ok",
+  "pooled_subjects": [
+    "MC06"
+  ]
+}
