@@ -31,7 +31,7 @@ if str(SCRIPTS_ROOT) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_ROOT))
 
 from _resume_staleness import (  # noqa: E402
-    manifest_fingerprint,
+    manifest_fingerprint_for_write,
     manifest_fingerprint_is_stale,
     result_registry_is_stale,
 )
@@ -420,6 +420,9 @@ def _fit_window(prepared, window, registry, args, root: Path) -> dict[str, Any]:
         _warn_no_winner(window)
         manifest = {
             "experiment_id": EXPERIMENT_ID, "status": "no_winner",
+            "resume_fingerprint": manifest_fingerprint_for_write(
+                resumed_postfit, previous, registry, SOURCE_ROOT
+            ),
             "model_id": registry.model_id, "mouse_id": prepared.mouse_id,
             **window.as_dict(),
             "registered_initialization_count": 8,
@@ -461,7 +464,9 @@ def _fit_window(prepared, window, registry, args, root: Path) -> dict[str, Any]:
     _atomic_json(
         {
             "experiment_id": EXPERIMENT_ID, "workflow": args.workflow, "status": "complete",
-            "resume_fingerprint": manifest_fingerprint(registry, SOURCE_ROOT),
+            "resume_fingerprint": manifest_fingerprint_for_write(
+                resumed_postfit, previous, registry, SOURCE_ROOT
+            ),
             "model_id": registry.model_id, "mouse_id": prepared.mouse_id,
             **window.as_dict(),
             "registered_initialization_count": 8,
@@ -692,7 +697,9 @@ def _single_session_job(payload: dict[str, Any]) -> dict[str, Any]:
     manifest = {
         "experiment_id": EXPERIMENT_ID, "workflow": payload["workflow"],
         "status": "complete" if eligible_for_global_analysis else "ineligible",
-        "resume_fingerprint": manifest_fingerprint(registry, SOURCE_ROOT),
+        "resume_fingerprint": manifest_fingerprint_for_write(
+            resumed_postfit, previous, registry, SOURCE_ROOT
+        ),
         "model_id": registry.model_id, "mouse_id": payload["mouse_id"],
         "session_id": payload["session_id"], "chronological_rank": payload["rank"],
         "fine_tune_scope": (

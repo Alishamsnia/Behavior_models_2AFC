@@ -114,11 +114,16 @@ def saved_registry_identity(result: dict) -> dict[str, str] | None:
     compare against, and a caller should treat that as stale.
     """
 
+    all_runs = _all_run_records(result)
     per_run: list[dict[str, str]] = []
-    for run in _all_run_records(result):
+    for run in all_runs:
         checksum = run.get("registry_config_sha256")
         if not checksum:
-            continue
+            # A run with no checksum at all is exactly as unverifiable as
+            # one whose checksum disagrees with the others -- skipping it
+            # instead would let a single verifiable run (out of many
+            # unverifiable ones) make the whole result look confirmed.
+            return None
         identity = {"registry_config_sha256": str(checksum)}
         snapshot = run.get("model_registry_snapshot") or {}
         artifacts = snapshot.get("resolved_artifacts") or {}
@@ -166,6 +171,32 @@ def manifest_fingerprint(registry, source_root: Path) -> dict[str, str]:
     result) when its status is written as complete."""
 
     return {"source_code_sha256": source_code_sha256(source_root)}
+
+
+def manifest_fingerprint_for_write(
+    resumed_from_saved_fit: bool,
+    previous_manifest: dict | None,
+    registry,
+    source_root: Path,
+) -> dict[str, str] | None:
+    """The ``resume_fingerprint`` value a runner should write into a
+    manifest it is marking complete.
+
+    If this run actually (re)computed the fit from scratch, a fresh
+    fingerprint correctly describes what produced it. But if this run only
+    *resumed* an already-saved fit (``resumed_from_saved_fit=True`` --
+    reusing an old ``fit_result.json`` and only redoing post-processing
+    like predictions or figures), writing a fingerprint computed from
+    TODAY's source code would misrepresent the underlying fit's actual
+    provenance as verified against current code, when it was never
+    (re)run under it. In that case the previous manifest's own recorded
+    fingerprint (which may itself be absent, for a legacy manifest) is
+    carried over unchanged instead.
+    """
+
+    if resumed_from_saved_fit:
+        return (previous_manifest or {}).get("resume_fingerprint")
+    return manifest_fingerprint(registry, source_root)
 
 
 def manifest_fingerprint_is_stale(

@@ -22,6 +22,7 @@ if str(SCRIPTS_ROOT) not in sys.path:
 from _resume_staleness import (  # noqa: E402
     current_registry_identity,
     manifest_fingerprint,
+    manifest_fingerprint_for_write,
     manifest_fingerprint_is_stale,
     registry_config_sha256,
     result_registry_is_stale,
@@ -98,6 +99,20 @@ class ResumeStalenessTests(unittest.TestCase):
         identity = saved_registry_identity(result)
         self.assertEqual(identity["initialization_table_sha256"], "table123")
         self.assertEqual(identity["split_assignment_sha256"], "split456")
+
+    def test_one_run_missing_a_checksum_yields_no_verifiable_identity(self) -> None:
+        """A result where only SOME runs recorded a checksum must not be
+        treated as verified just because the ones that did happen to agree
+        -- otherwise a single valid-looking run among several corrupted or
+        incomplete ones would make the whole multi-start result look
+        fresh."""
+        result = {"runs": [
+            {"registry_config_sha256": "abc"},
+            {"start_id": 1},
+            {"start_id": 2},
+        ]}
+        self.assertIsNone(saved_registry_identity(result))
+        self.assertTrue(result_registry_is_stale(result, self.registry))
 
     def test_disagreeing_runs_yield_no_verifiable_identity(self) -> None:
         result = {"runs": [
@@ -199,6 +214,32 @@ class ManifestFingerprintTests(unittest.TestCase):
         self.assertTrue(
             manifest_fingerprint_is_stale(manifest, self.registry, self.source_root)
         )
+
+    def test_fingerprint_for_write_is_fresh_when_a_fit_actually_ran(self) -> None:
+        recorded = manifest_fingerprint_for_write(
+            False, {"resume_fingerprint": {"source_code_sha256": "stale_value"}},
+            self.registry, self.source_root,
+        )
+        self.assertEqual(recorded, manifest_fingerprint(self.registry, self.source_root))
+        self.assertNotEqual(recorded["source_code_sha256"], "stale_value")
+
+    def test_fingerprint_for_write_is_carried_over_when_only_resumed(self) -> None:
+        """A run that only reused an already-resumed fit (redoing
+        post-processing, not the fit itself) must not stamp today's source
+        code onto a manifest describing a fit that never actually ran under
+        it."""
+        previous_manifest = {"resume_fingerprint": {"source_code_sha256": "old_value"}}
+        recorded = manifest_fingerprint_for_write(
+            True, previous_manifest, self.registry, self.source_root,
+        )
+        self.assertEqual(recorded, {"source_code_sha256": "old_value"})
+
+    def test_fingerprint_for_write_carries_over_absence_too(self) -> None:
+        """A resumed fit whose manifest never recorded a fingerprint at all
+        (legacy manifest) must not gain one just because this run happened
+        to only redo post-processing."""
+        recorded = manifest_fingerprint_for_write(True, {}, self.registry, self.source_root)
+        self.assertIsNone(recorded)
 
 
 if __name__ == "__main__":

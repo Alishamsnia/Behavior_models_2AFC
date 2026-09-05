@@ -87,11 +87,18 @@ from m0_sensory_v1.model.fit import LBFGSSettings
 reg = load_reg()
 train = [replace(make_session(Session, seed=10), split_role="train")]
 val = [replace(make_session(Session, seed=11), split_role="validation")]
-fit_fn(
+result = fit_fn(
     train, val, reg, reg.initializations[0],
     optimizer_strategy="lbfgs", allow_short_convergence_budget=True,
     lbfgs_settings=LBFGSSettings(maximum_steps=5),
 )
+# A warnings.filterwarnings("error", ...) match would raise UserWarning
+# as an exception, which the fitter's own try/except would catch and
+# record as exception_message -- so "the process exited 0" alone is not
+# enough evidence the repaired line was actually reached; a fit that fails
+# for an unrelated reason before ever getting there would exit 0 too.
+assert result.exception_message is None, "fit recorded a failure: " + str(result.exception_message)
+assert len(result.history) > 0, "fit recorded no steps at all"
 print("NO_WARNING_RAISED")
 """
 
