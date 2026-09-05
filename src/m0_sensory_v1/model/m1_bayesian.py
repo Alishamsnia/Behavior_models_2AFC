@@ -159,24 +159,37 @@ def integrate_general_decision_region(
             discriminant,
         )
 
+    if _truth(torch.abs(discriminant) <= discriminant_tolerance):
+        # A double (or near-double) root: both quadratic roots coincide at
+        # -a1/(2*a2), computed directly with no square root involved. Doing
+        # it this way -- rather than computing sqrt(discriminant) and then
+        # discarding it via `* 0.0` -- matters for backward: sqrt's local
+        # derivative 1/(2*sqrt(x)) diverges as x -> 0, and multiplying an
+        # infinite local gradient by an exact-zero incoming gradient still
+        # yields NaN (0 * inf), which would otherwise poison every fitted
+        # parameter's gradient for this trial even though the forward
+        # probability is perfectly well defined. Routing the constant
+        # output through `discriminant` instead (whose own gradient is
+        # finite everywhere) keeps the zero-measure-boundary property
+        # (probability does not depend on which side of the point we are on)
+        # without the singular intermediate.
+        all_long = _truth(a2 > 0.0)
+        root = -a1 / (2.0 * a2)
+        probability = duration_s.new_tensor(1.0 if all_long else 0.0) + discriminant * 0.0
+        return probability, GeneralDecisionRegion(
+            root,
+            root,
+            "quadratic_double_root",
+            "all except boundary" if all_long else "empty except boundary",
+            discriminant,
+        )
+
     safe_discriminant = torch.clamp_min(discriminant, 0.0)
     square_root = torch.sqrt(safe_discriminant)
     root_a = (-a1 - square_root) / (2.0 * a2)
     root_b = (-a1 + square_root) / (2.0 * a2)
     lower = torch.minimum(root_a, root_b)
     upper = torch.maximum(root_a, root_b)
-    if _truth(torch.abs(discriminant) <= discriminant_tolerance):
-        # A single zero-measure point does not change a continuous probability.
-        all_long = _truth(a2 > 0.0)
-        probability = duration_s.new_tensor(1.0 if all_long else 0.0) + lower * 0.0
-        return probability, GeneralDecisionRegion(
-            lower,
-            upper,
-            "quadratic_double_root",
-            "all except boundary" if all_long else "empty except boundary",
-            discriminant,
-        )
-
     lower_cdf = normal.cdf(lower)
     upper_cdf = normal.cdf(upper)
     if _truth(a2 > 0.0):
