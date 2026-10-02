@@ -9,6 +9,7 @@ trees is modified. Outputs are written under
 from __future__ import annotations
 
 import argparse
+import hashlib
 import re
 import tempfile
 from pathlib import Path
@@ -230,6 +231,105 @@ def collect_sliding_window_global_pooled_metrics(
                 "prediction_unit_count": subset["source_run_id"].nunique(),
             })
     return pd.DataFrame(rows)
+
+
+# Models with a block-context long-prior (``model_prior_long``): M0 is pure
+# sensory and has no block prior at all, so it is excluded from fig20.
+CAUSAL_TRAJECTORY_MODEL_ORDER = ("M1", "M2", "M3", "M4")
+CAUSAL_TRAJECTORY_SPLIT_ROLES = ("train", "validation", "test")
+CAUSAL_TRAJECTORY_SAMPLES_PER_SPLIT = 5
+
+
+def _deterministic_rng(*parts: str) -> np.random.Generator:
+    """A reproducible RNG seeded from arbitrary string parts (stable across
+    interpreter runs, unlike Python's built-in ``hash``)."""
+    digest = hashlib.sha256("|".join(parts).encode("utf-8")).digest()
+    return np.random.default_rng(int.from_bytes(digest[:8], "big"))
+
+
+def collect_prior_trajectory_samples(mouse_id: str) -> pd.DataFrame:
+    """Sampled long-block-prior causal trajectories for fig20.
+
+    5 random sessions per split role (train/validation/test), sampled ONCE
+    from the intersection of every model's own available sessions for that
+    split (M4 has a handful fewer converged windows than M1-M3, so this
+    keeps the sample apples-to-apples) and reused identically across all
+    four model pages plus the cross-model overlay page -- the same
+    ``sample_rank`` is the same session everywhere in fig20. Each model still
+    gets its own randomly chosen fitted window per session (fits differ by
+    model; a session recurs across several rolling windows for train/
+    validation, one window per session for test). Both draws are
+    deterministic (seeded from mouse/split_role and mouse/model/split_role/
+    session), so reruns reproduce the same sample unless the underlying
+    pooled predictions change.
+    """
+    required = {
+        "session_id", "trial_index", "split_role", "true_block",
+        "model_prior_long", "model_evaluated", "source_run_id",
+    }
+    columns = [
+        "model_id", "split_role", "sample_rank", "session_id", "window_id",
+        "trial_index", "model_prior_long", "true_block",
+    ]
+
+    model_frames: dict[str, pd.DataFrame] = {}
+    for model_id in CAUSAL_TRAJECTORY_MODEL_ORDER:
+        window_root = common.sliding_window_dir(model_id, mouse_id)
+        pooled_path = window_root / "global_figures" / "pooled_trial_predictions.csv"
+        if not pooled_path.is_file():
+            raise FileNotFoundError(
+                f"Missing pooled trial predictions for {model_id}: {pooled_path}"
+            )
+        df = pd.read_csv(pooled_path)
+        if missing := required.difference(df.columns):
+            raise KeyError(
+                f"{model_id} pooled trial predictions missing columns needed for fig20: {sorted(missing)}"
+            )
+        evaluated = df["model_evaluated"].astype(str).str.lower().eq("true")
+        df = df.loc[evaluated].copy()
+        df["window_id"] = df["source_run_id"].map(_window_id_from_run_id)
+        model_frames[model_id] = df
+
+    rows = []
+    for split_role in CAUSAL_TRAJECTORY_SPLIT_ROLES:
+        common_session_ids = set.intersection(*(
+            set(frame.loc[frame["split_role"] == split_role, "session_id"])
+            for frame in model_frames.values()
+        ))
+        candidate_sessions = sorted(common_session_ids)
+        if not candidate_sessions:
+            continue
+        session_rng = _deterministic_rng(mouse_id, split_role)
+        n_sample = min(CAUSAL_TRAJECTORY_SAMPLES_PER_SPLIT, len(candidate_sessions))
+        sampled_sessions = session_rng.choice(
+            np.array(candidate_sessions, dtype=object), size=n_sample, replace=False,
+        )
+        for sample_rank, session_id in enumerate(sampled_sessions, start=1):
+            for model_id in CAUSAL_TRAJECTORY_MODEL_ORDER:
+                session_rows = model_frames[model_id].loc[
+                    (model_frames[model_id]["session_id"] == session_id)
+                    & (model_frames[model_id]["split_role"] == split_role)
+                ]
+                window_ids = sorted(session_rows["window_id"].dropna().unique())
+                window_rng = _deterministic_rng(mouse_id, model_id, split_role, str(session_id))
+                chosen_window = window_rng.choice(np.array(window_ids)) if window_ids else None
+                trajectory = session_rows.loc[
+                    session_rows["window_id"] == chosen_window
+                ].sort_values("trial_index")
+                for _, trial in trajectory.iterrows():
+                    rows.append({
+                        "model_id": model_id,
+                        "split_role": split_role,
+                        "sample_rank": sample_rank,
+                        "session_id": session_id,
+                        "window_id": int(chosen_window) if chosen_window is not None else None,
+                        "trial_index": trial["trial_index"],
+                        "model_prior_long": trial["model_prior_long"],
+                        "true_block": trial["true_block"],
+                    })
+    if not rows:
+        return pd.DataFrame(columns=columns)
+    return pd.DataFrame(rows, columns=columns)
 
 
 def collect_sliding_window_parameters(mouse_id: str) -> pd.DataFrame:
@@ -763,9 +863,20 @@ def _read_trial_predictions(run_dir: Path) -> Optional[pd.DataFrame]:
     return df.loc[evaluated].copy()
 
 
-def _trial_subset_rows(trials: pd.DataFrame, split_role_values: tuple) -> list:
-    """(split_role, trial_subset) -> mean_nll/n_trials rows for one already-
-    read, already-evaluated-filtered trials frame."""
+def _trial_subset_rows(
+    trials: pd.DataFrame,
+    split_role_values: tuple,
+    *,
+    include_finite_nll_sem: bool = False,
+) -> list:
+    """(split_role, trial_subset) -> NLL summary rows for one already-read,
+    already-evaluated-filtered trials frame.
+
+    When ``include_finite_nll_sem`` is true, non-finite NLLs are excluded and
+    ``nll_sem`` is the sample SEM across the remaining individual-trial NLL
+    values. It is undefined when fewer than two finite trials contribute.
+    The default preserves the pre-existing single-session summary behavior.
+    """
     rows = []
     for split_role in split_role_values:
         split_trials = trials[trials["split_role"] == split_role]
@@ -774,12 +885,17 @@ def _trial_subset_rows(trials: pd.DataFrame, split_role_values: tuple) -> list:
             nll = pd.to_numeric(
                 subset_trials["per_trial_negative_log_likelihood"], errors="coerce",
             ).dropna()
-            rows.append({
+            if include_finite_nll_sem:
+                nll = nll[np.isfinite(nll)]
+            row = {
                 "split_role": split_role,
                 "trial_subset": subset_name,
                 "mean_nll": float(nll.mean()) if len(nll) else float("nan"),
                 "n_trials": int(len(nll)),
-            })
+            }
+            if include_finite_nll_sem:
+                row["nll_sem"] = float(nll.sem()) if len(nll) >= 2 else float("nan")
+            rows.append(row)
     return rows
 
 
@@ -939,11 +1055,12 @@ def _event_aligned_rows_by_split(trials: pd.DataFrame) -> list:
     return rows
 
 
-# Figure 19: a wider +/-10 trial window around block transitions than Figure
-# 16's NLL analysis (which uses BLOCK_TRANSITION_RELATIVE_RANGE, +/-5), and
-# a "performance" (accuracy) metric rather than NLL, further split by the
-# trial's own stimulus category (short/long) at each relative position.
-BLOCK_TRANSITION_PERFORMANCE_RELATIVE_RANGE = range(-10, 11)
+# Figure 19: an asymmetric -15..+20 trial window around block transitions,
+# wider than Figure 16's NLL analysis (which uses
+# BLOCK_TRANSITION_RELATIVE_RANGE, +/-5), and a "performance" (accuracy)
+# metric rather than NLL, further split by the trial's own stimulus category
+# (short/long) at each relative position.
+BLOCK_TRANSITION_PERFORMANCE_RELATIVE_RANGE = range(-15, 21)
 BLOCK_TRANSITION_PERFORMANCE_COLUMNS = (
     ("block_transition_short_to_long", "short", "Short trials, Short→Long transition"),
     ("block_transition_short_to_long", "long", "Long trials, Short→Long transition"),
@@ -966,6 +1083,7 @@ def _aggregate_event_aligned_performance(
     columns = [
         "event_category", "trial_type", "relative_position",
         "mean_mouse_correct", "mean_model_probability_correct", "n_trials",
+        "support_signature",
     ]
     if events.empty:
         return pd.DataFrame(columns=columns)
@@ -984,21 +1102,39 @@ def _aggregate_event_aligned_performance(
             trial_type = "short" if category == 0 else ("long" if category == 1 else None)
             if trial_type is None:
                 continue
+            mouse_correct = pd.to_numeric(trial["mouse_correct"], errors="coerce")
+            model_correct = pd.to_numeric(
+                trial["model_probability_correct"], errors="coerce",
+            )
+            if not np.isfinite(mouse_correct) or not np.isfinite(model_correct):
+                continue
             rows.append({
                 "event_category": event["event_category"],
                 "trial_type": trial_type,
                 "relative_position": relative_position,
-                "mouse_correct": trial["mouse_correct"],
-                "model_probability_correct": trial["model_probability_correct"],
+                "support_id": f"{event['session_id']}:{event['anchor_trial_index']}",
+                "mouse_correct": mouse_correct,
+                "model_probability_correct": model_correct,
             })
     if not rows:
         return pd.DataFrame(columns=columns)
     long_df = pd.DataFrame(rows)
-    return long_df.groupby(["event_category", "trial_type", "relative_position"]).agg(
+    grouped = long_df.groupby(["event_category", "trial_type", "relative_position"])
+    summary = grouped.agg(
         mean_mouse_correct=("mouse_correct", "mean"),
         mean_model_probability_correct=("model_probability_correct", "mean"),
         n_trials=("mouse_correct", "count"),
     ).reset_index()
+    signatures = grouped["support_id"].agg(
+        lambda values: hashlib.sha256(
+            "\n".join(sorted(map(str, values))).encode("utf-8"),
+        ).hexdigest(),
+    ).rename("support_signature").reset_index()
+    return summary.merge(
+        signatures,
+        on=["event_category", "trial_type", "relative_position"],
+        validate="one_to_one",
+    )
 
 
 def _block_transition_performance_rows_by_split(trials: pd.DataFrame) -> list:
@@ -1022,6 +1158,100 @@ def _block_transition_performance_rows_by_split(trials: pd.DataFrame) -> list:
                 "mean_mouse_correct": row["mean_mouse_correct"],
                 "mean_model_probability_correct": row["mean_model_probability_correct"],
                 "n_trials": int(row["n_trials"]),
+                "support_signature": row["support_signature"],
+            })
+    return rows
+
+
+# Figure 23: mirrors Figure 19's performance-by-position analysis but
+# aligned on the rare trial itself (RARE_TRIAL_RELATIVE_RANGE, +/-2) rather
+# than a block transition. No trial_type split is needed here -- a
+# rare-trial event's own stimulus category is already fixed by its
+# event_category (rare_short = short stimulus in a long block, rare_long =
+# long stimulus in a short block), unlike a block transition, whose window
+# passes through both trial types.
+RARE_TRIAL_PERFORMANCE_COLUMNS = (
+    ("rare_short", "Rare short trials (in long block)"),
+    ("rare_long", "Rare long trials (in short block)"),
+)
+
+
+def _aggregate_rare_trial_performance(
+    trials: pd.DataFrame, events: pd.DataFrame, relative_range: range,
+) -> pd.DataFrame:
+    """For each surviving rare-trial event, pull its window of
+    relative-position mouse correctness / model expected correctness, then
+    average across events sharing the same (event_category,
+    relative_position) WITHIN this one window -- same aggregate-within-
+    window-first discipline as ``_aggregate_event_aligned_performance``, but
+    without its trial_type split (see ``RARE_TRIAL_PERFORMANCE_COLUMNS``).
+    """
+    columns = [
+        "event_category", "relative_position",
+        "mean_mouse_correct", "mean_model_probability_correct", "n_trials",
+        "support_signature",
+    ]
+    if events.empty:
+        return pd.DataFrame(columns=columns)
+    by_session = {
+        session_id: session_trials.set_index("trial_index")[
+            ["mouse_correct", "model_probability_correct"]
+        ]
+        for session_id, session_trials in trials.groupby("session_id")
+    }
+    rows = []
+    for _, event in events.iterrows():
+        lookup = by_session[event["session_id"]]
+        for relative_position in relative_range:
+            trial = lookup.loc[event["anchor_trial_index"] + relative_position]
+            mouse_correct = pd.to_numeric(trial["mouse_correct"], errors="coerce")
+            model_correct = pd.to_numeric(trial["model_probability_correct"], errors="coerce")
+            if not np.isfinite(mouse_correct) or not np.isfinite(model_correct):
+                continue
+            rows.append({
+                "event_category": event["event_category"],
+                "relative_position": relative_position,
+                "support_id": f"{event['session_id']}:{event['anchor_trial_index']}",
+                "mouse_correct": mouse_correct,
+                "model_probability_correct": model_correct,
+            })
+    if not rows:
+        return pd.DataFrame(columns=columns)
+    long_df = pd.DataFrame(rows)
+    grouped = long_df.groupby(["event_category", "relative_position"])
+    summary = grouped.agg(
+        mean_mouse_correct=("mouse_correct", "mean"),
+        mean_model_probability_correct=("model_probability_correct", "mean"),
+        n_trials=("mouse_correct", "count"),
+    ).reset_index()
+    signatures = grouped["support_id"].agg(
+        lambda values: hashlib.sha256(
+            "\n".join(sorted(map(str, values))).encode("utf-8"),
+        ).hexdigest(),
+    ).rename("support_signature").reset_index()
+    return summary.merge(
+        signatures, on=["event_category", "relative_position"], validate="one_to_one",
+    )
+
+
+def _rare_trial_performance_rows_by_split(trials: pd.DataFrame) -> list:
+    """Figure 23's rows for one already-read window's trials: one
+    ``_aggregate_rare_trial_performance`` pass per ``EVENT_ALIGNED_SPLIT_ROLES``
+    value, mirroring ``_block_transition_performance_rows_by_split``."""
+    rows = []
+    for split_role in EVENT_ALIGNED_SPLIT_ROLES:
+        subset = trials if split_role == "all" else trials.loc[trials["split_role"] == split_role]
+        events = _detect_rare_trial_events(subset, RARE_TRIAL_RELATIVE_RANGE)
+        agg = _aggregate_rare_trial_performance(subset, events, RARE_TRIAL_RELATIVE_RANGE)
+        for _, row in agg.iterrows():
+            rows.append({
+                "split_role": split_role,
+                "event_category": row["event_category"],
+                "relative_position": int(row["relative_position"]),
+                "mean_mouse_correct": row["mean_mouse_correct"],
+                "mean_model_probability_correct": row["mean_model_probability_correct"],
+                "n_trials": int(row["n_trials"]),
+                "support_signature": row["support_signature"],
             })
     return rows
 
@@ -1032,15 +1262,17 @@ def collect_sliding_window_trial_level_tables(mouse_id: str) -> tuple:
     one row per (model, window, split_role, trial_subset)), the event-aligned
     NLL table (Figure 16: one row per (model, window, split_role,
     event_category, relative_position), split_role in
-    ``EVENT_ALIGNED_SPLIT_ROLES``), and the block-transition performance-by-
+    ``EVENT_ALIGNED_SPLIT_ROLES``), the block-transition performance-by-
     trial-type table (Figure 19: one row per (model, window, split_role,
-    event_category, trial_type, relative_position)) -- reading each file
-    three times for three separate tables would triple this step's I/O for
-    no benefit.
+    event_category, trial_type, relative_position)), and the rare-trial
+    performance table (Figure 23: one row per (model, window, split_role,
+    event_category, relative_position)) -- reading each file four times for
+    four separate tables would quadruple this step's I/O for no benefit.
 
-    Returns ``(trial_subset_metrics, event_aligned_nll, block_transition_performance)``.
+    Returns ``(trial_subset_metrics, event_aligned_nll,
+    block_transition_performance, rare_trial_performance)``.
     """
-    subset_rows, event_rows, block_transition_rows = [], [], []
+    subset_rows, event_rows, block_transition_rows, rare_trial_rows = [], [], [], []
     for model_id in MODEL_ORDER:
         for window_dir in common.list_window_dirs(model_id, mouse_id):
             manifest = common.read_json(window_dir / "window_manifest.json") or {}
@@ -1048,28 +1280,40 @@ def collect_sliding_window_trial_level_tables(mouse_id: str) -> tuple:
             trials = _read_trial_predictions(window_dir)
             if trials is None:
                 continue
-            for row in _trial_subset_rows(trials, ("train", "validation", "test")):
+            for row in _trial_subset_rows(
+                trials, ("train", "validation", "test"), include_finite_nll_sem=True,
+            ):
                 subset_rows.append({"model_id": model_id, "window_id": window_id, **row})
             for row in _event_aligned_rows_by_split(trials):
                 event_rows.append({"model_id": model_id, "window_id": window_id, **row})
             for row in _block_transition_performance_rows_by_split(trials):
                 block_transition_rows.append({"model_id": model_id, "window_id": window_id, **row})
+            for row in _rare_trial_performance_rows_by_split(trials):
+                rare_trial_rows.append({"model_id": model_id, "window_id": window_id, **row})
     # Explicit columns so an entirely empty result (e.g. no window anywhere
     # produced a qualifying event) still has a readable schema instead of a
     # columnless DataFrame that breaks downstream groupby/column access.
-    subset_columns = ["model_id", "window_id", "split_role", "trial_subset", "mean_nll", "n_trials"]
+    subset_columns = [
+        "model_id", "window_id", "split_role", "trial_subset",
+        "mean_nll", "nll_sem", "n_trials",
+    ]
     event_columns = [
         "model_id", "window_id", "split_role", "event_category", "relative_position",
         "mean_nll", "n_events_in_unit", "n_events_at_position",
     ]
     block_transition_columns = [
         "model_id", "window_id", "split_role", "event_category", "trial_type", "relative_position",
-        "mean_mouse_correct", "mean_model_probability_correct", "n_trials",
+        "mean_mouse_correct", "mean_model_probability_correct", "n_trials", "support_signature",
+    ]
+    rare_trial_columns = [
+        "model_id", "window_id", "split_role", "event_category", "relative_position",
+        "mean_mouse_correct", "mean_model_probability_correct", "n_trials", "support_signature",
     ]
     return (
         pd.DataFrame(subset_rows, columns=subset_columns),
         pd.DataFrame(event_rows, columns=event_columns),
         pd.DataFrame(block_transition_rows, columns=block_transition_columns),
+        pd.DataFrame(rare_trial_rows, columns=rare_trial_columns),
     )
 
 
@@ -2101,6 +2345,9 @@ def run(mouse_id: str) -> dict[str, Path]:
     sw_params = collect_sliding_window_parameters(mouse_id)
     save("sliding_window_parameters.csv", sw_params)
 
+    prior_trajectory_samples = collect_prior_trajectory_samples(mouse_id)
+    save("sliding_window_prior_trajectory_samples.csv", prior_trajectory_samples)
+
     ss_metrics = collect_single_session_metrics(mouse_id)
     save("single_session_metrics.csv", ss_metrics)
 
@@ -2158,14 +2405,15 @@ def run(mouse_id: str) -> dict[str, Path]:
     save("sliding_window_paired_pairwise.csv", sw_paired)
 
     # Trial-subset breakdown (fig01/fig03), event-aligned NLL (fig16/fig17),
-    # and block-transition performance by trial type (fig19). Each
-    # window/session's trial_predictions.csv is read exactly once here,
-    # shared between the three tables.
-    sw_trial_subset, sw_event_aligned, sw_block_transition_performance = (
+    # block-transition performance by trial type (fig19), and rare-trial
+    # performance (fig23). Each window/session's trial_predictions.csv is
+    # read exactly once here, shared between the four tables.
+    sw_trial_subset, sw_event_aligned, sw_block_transition_performance, sw_rare_trial_performance = (
         collect_sliding_window_trial_level_tables(mouse_id)
     )
     save("sliding_window_trial_subset_metrics.csv", sw_trial_subset)
     save("sliding_window_block_transition_performance.csv", sw_block_transition_performance)
+    save("sliding_window_rare_trial_performance.csv", sw_rare_trial_performance)
 
     ss_trial_subset, ss_event_aligned = collect_single_session_trial_level_tables(mouse_id)
     save("single_session_trial_subset_metrics.csv", ss_trial_subset)

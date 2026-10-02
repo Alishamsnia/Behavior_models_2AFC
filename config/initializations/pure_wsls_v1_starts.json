@@ -1,0 +1,64 @@
+{
+  "model_id": "Pure_WSLS_v1",
+  "table_version": "m0_directional_lapse_eight_starts_v3_ell_short_ell_long_only_v1",
+  "frozen": true,
+  "generation_policy": "reuse_m0_own_eight_registered_ell_short_ell_long_rows_unchanged_by_start_id",
+  "parameter_order": ["ell_short", "ell_long"],
+  "lapse_max": 1.0,
+  "m0_source": {
+    "file": "config/initializations/m0_sensory_v1_starts_ell100.json",
+    "table_version": "m0_directional_lapse_kappa_eight_starts_v3",
+    "sha256": "72cfa67383c52e261adab9d20feb441b31e4367ff3746a7de132c69e4b385480"
+  },
+  "note": "Pure_WSLS has no sensory coordinate (no w/s0/kappa), so only M0's own ell_short/ell_long columns are reused here, unchanged, by start_id -- exactly the same eight rows M1_stimulus_kernel_v1 and m1_hmm_true_v1 extend with their own single added parameter. This is the same deliberate eight-point joint design M0 itself uses for multi-start coverage, not a controlled one-parameter-at-a-time identifiability sweep (see M0's own initialization table note). Since alpha is fixed at exactly 1.0 (not fitted) and there is no sensory coordinate, fitting two parameters by L-BFGS is extremely cheap: every start is run sequentially in one process rather than dispatched across a process pool.",
+  "starts": [
+    {
+      "start_id": 1,
+      "ell_short": 0.03,
+      "ell_long": 0.03,
+      "purpose": "Symmetric reference lapse"
+    },
+    {
+      "start_id": 2,
+      "ell_short": 0.135,
+      "ell_long": 0.015,
+      "purpose": "Higher short-category lapse"
+    },
+    {
+      "start_id": 3,
+      "ell_short": 0.0105,
+      "ell_long": 0.0195,
+      "purpose": "Low asymmetric lapse"
+    },
+    {
+      "start_id": 4,
+      "ell_short": 0.224,
+      "ell_long": 0.056,
+      "purpose": "High short-category lapse"
+    },
+    {
+      "start_id": 5,
+      "ell_short": 0.002,
+      "ell_long": 0.008,
+      "purpose": "Near-zero category-specific lapses"
+    },
+    {
+      "start_id": 6,
+      "ell_short": 0.13,
+      "ell_long": 0.07,
+      "purpose": "Moderate short-category lapse"
+    },
+    {
+      "start_id": 7,
+      "ell_short": 0.036,
+      "ell_long": 0.324,
+      "purpose": "High long-category lapse"
+    },
+    {
+      "start_id": 8,
+      "ell_short": 0.098,
+      "ell_long": 0.002,
+      "purpose": "Short-category lapse with near-zero long lapse"
+    }
+  ]
+}

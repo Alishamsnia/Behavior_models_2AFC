@@ -1,0 +1,87 @@
+{
+  "model_id": "M1_stimulus_kernel_v1",
+  "scientific_alias": "M_stimulus_kernel",
+  "registry_schema_version": "1.0",
+  "software_version": "0.1.0",
+  "implemented_scope": "unchanged M0/M1 sensory-lapse readout, scalar delta-rule prior (no hazard, no hidden state, no fixed category-rate prototypes)",
+  "parameter_order": ["w", "s0", "ell_short", "ell_long", "kappa", "a"],
+  "session_policy": "independent_dynamic_episode_reset_to_neutral",
+  "source_m0_registry": {
+    "file": "config/m0_sensory_v1.json",
+    "sha256": "557c5edb6b4085db1717b511587b4658681bc4d2088e311483b5f6a6eb9041d1"
+  },
+  "initial_pi": 0.5,
+  "prior_probability_epsilon": 1e-10,
+  "stimulus_kernel": {
+    "update_rule": "pi_next_equals_pi_plus_alpha_times_category_minus_pi",
+    "learning_rate_parameterization": "alpha_equals_sigmoid_a_a_is_the_fitted_unconstrained_coordinate",
+    "initial_prior": "pi_1_equals_one_half_every_session",
+    "feedback_gate": "update_applied_only_when_feedback_valid_is_true_else_pi_carries_forward_unchanged",
+    "prediction_uses_pre_update_pi": true,
+    "session_reset": "pi_resets_to_one_half_at_the_start_of_every_session_dynamic_state_never_crosses_a_session_boundary",
+    "hidden_state": "none_pi_t_is_itself_the_fitted_scalar_belief_not_a_function_of_a_discrete_state",
+    "hazard": "none_this_model_has_no_hazard_or_transition_kernel",
+    "fixed_category_rate_prototypes": "none_this_model_has_no_theta_lookup",
+    "interpretation": "repeated_application_of_the_delta_rule_is_an_exponentially_weighted_moving_average_of_past_categories_the_kernel_is_a_consequence_of_the_recursion_not_a_separate_function",
+    "category_emission_in_outer_objective": false,
+    "true_block_identity_predictive_input": false,
+    "true_switch_index_predictive_input": false
+  },
+  "initialization_table": {
+    "version": "m0_directional_lapse_kappa_eight_starts_v3_plus_eight_learning_rates_v1",
+    "file": "config/initializations/m1_stimulus_kernel_v1_starts.json",
+    "sha256": "6ea355eb265a5ab01117242edf0d2ef43b64cbb559edac56c020ff65eaf81afb",
+    "count": 8,
+    "generation_policy": "pair_each_shared_M0_start_by_id_with_one_registered_learning_rate"
+  },
+  "convergence": {
+    "maximum_epochs": 2000,
+    "minimum_learning_rate": 1e-6,
+    "gradient_norm_tolerance": 1e-5,
+    "meaningful_improvement_tolerance": 1e-8,
+    "no_improvement_patience_epochs": 100,
+    "stable_training_window_epochs": 25,
+    "required_checks": [
+      "finite_objective",
+      "finite_parameters",
+      "finite_gradients",
+      "small_gradient_norm",
+      "stable_fresh_training_nll",
+      "no_parameter_transform_errors",
+      "no_optimizer_runtime_errors"
+    ],
+    "note": "Matches M0/M1's own convergence tolerances; no_probability_normalization_errors is dropped because this evaluator has no renormalization step -- pi_t is a convex combination of pi_{t-1} in [0,1] and C_{t-1} in {0,1} with weight alpha in the open interval (0,1), so it is bounded in [0,1] by construction, and the evaluator additionally raises immediately if pi_t is ever non-finite (see session.py)."
+  },
+  "fitting": {
+    "lbfgs_maximum_steps": 250,
+    "lbfgs_learning_rate": 1.0,
+    "lbfgs_history_size": 10,
+    "lbfgs_maximum_evaluations_per_step": 20,
+    "lbfgs_tolerance_grad": 1e-9,
+    "lbfgs_tolerance_change": 1e-12,
+    "lbfgs_line_search_fn": "strong_wolfe",
+    "optional_adam_warmup_steps": 1000,
+    "optional_adam_learning_rate": 0.01
+  },
+  "multi_start_selection": {
+    "winner_criterion": "lowest_recalculated_best_training_mean_nll_among_converged_runs",
+    "near_equal_training_nll_tolerance": 1e-6,
+    "identifiability_parameter_distance_threshold": 0.25,
+    "parameter_distance_scale": [0.2, 1.2, 0.2, 1.0, 1.0, 2.0],
+    "additional_starts_policy": "report_need_only_never_generate_automatically",
+    "result_schema_version": "m1_stimulus_kernel_fit_result_v1"
+  },
+  "metrics": {
+    "primary": ["elpd", "mean_nll_per_valid_trial"],
+    "secondary": ["brier_score", "classification_accuracy"],
+    "diagnostics": [
+      "calibration_curve",
+      "overall_psychometric_curve",
+      "per_session_mean_nll",
+      "trialwise_prior_long",
+      "trialwise_post_update_prior_long",
+      "trialwise_decision_region_regime",
+      "fitted_learning_rate_alpha"
+    ]
+  }
+}

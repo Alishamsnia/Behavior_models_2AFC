@@ -1,0 +1,26 @@
+{
+  "model_id": "M2_dynamic_previous_wsls_bias_v1",
+  "table_version": "m2_dynamic_exact_plus_eight_bias_weights_v1",
+  "frozen": true,
+  "generation_policy": "pair_each_M2_dynamic_block_length_start_by_id_with_one_registered_eta_logit",
+  "parameter_order": ["w", "s0", "ell_short", "ell_long", "kappa", "ah", "delta0", "bh", "eta_logit"],
+  "duration_unit": "seconds",
+  "lapse_max": 1.0,
+  "m2_dynamic_source": {
+    "file": "config/initializations/m2_dynamic_block_length_v1_starts.json",
+    "table_version": "m2_dynamic_block_length_exact_m2_plus_bh_v1",
+    "sha256": "f2e0624d843778e99ad814b95d1413465976c7255fa88ddef352290fa2696ada"
+  },
+  "bias_weight_assignment_policy": "start IDs 1-8 receive eta in [0.05,0.10,0.15,0.20,0.30,0.40,0.50,0.60] respectively, eta_logit=logit(eta); values copied verbatim from m2_dynamic_previous_action_bias_v1_starts.json's own eight bias weights so multi-start coverage of eta matches the sibling model exactly (the only difference between the two models is the pi_t update driver and gate, not the eta grid). alpha is fixed at 1.0 for every start (not a fitted coordinate in this model).",
+  "note": "Each of M2_dynamic_block_length_v1's own eight registered starts is paired with one distinct bias-mixing-weight logit -- a deliberate eight-point joint design for multi-start coverage, not a controlled one-parameter-at-a-time identifiability sweep, matching the family's own stated convention.",
+  "starts": [
+    {"start_id": 1, "source_m2_dynamic_start_id": 1, "w": 0.0271, "s0": 0.555, "ell_short": 0.03, "ell_long": 0.03, "kappa": 1.0, "ah": -3.367295829986932, "delta0": 1.3862943611198906, "bh": 0.02, "eta_logit": -2.9444389791664403, "purpose": "Exact M2_dynamic start 1; eta=0.05 (near-negligible bias weight)"},
+    {"start_id": 2, "source_m2_dynamic_start_id": 2, "w": 0.005, "s0": 0.7, "ell_short": 0.135, "ell_long": 0.015, "kappa": 0.5, "ah": -4.59511985013459, "delta0": 1.3862943611198906, "bh": 0.05, "eta_logit": -2.1972245773362196, "purpose": "Exact M2_dynamic start 2; eta=0.10 (small bias weight)"},
+    {"start_id": 3, "source_m2_dynamic_start_id": 3, "w": 0.01, "s0": 1.2, "ell_short": 0.0105, "ell_long": 0.0195, "kappa": 2.0, "ah": -3.8918202981106265, "delta0": 1.3862943611198906, "bh": 0.10, "eta_logit": -1.7346010553881064, "purpose": "Exact M2_dynamic start 3; eta=0.15"},
+    {"start_id": 4, "source_m2_dynamic_start_id": 4, "w": 0.02, "s0": 0.25, "ell_short": 0.224, "ell_long": 0.056, "kappa": 0.75, "ah": -2.9444389791664403, "delta0": 1.3862943611198906, "bh": 0.20, "eta_logit": -1.3862943611198906, "purpose": "Exact M2_dynamic start 4; eta=0.20"},
+    {"start_id": 5, "source_m2_dynamic_start_id": 5, "w": 0.04, "s0": 0.9, "ell_short": 0.002, "ell_long": 0.008, "kappa": 1.3333333333333333, "ah": -2.4423470353692043, "delta0": 1.3862943611198906, "bh": 0.40, "eta_logit": -0.8472978603872036, "purpose": "Exact M2_dynamic start 5; eta=0.30 (moderate bias weight)"},
+    {"start_id": 6, "source_m2_dynamic_start_id": 6, "w": 0.07, "s0": 0.15, "ell_short": 0.13, "ell_long": 0.07, "kappa": 0.9, "ah": -1.9924301646902063, "delta0": 1.3862943611198906, "bh": 0.08, "eta_logit": -0.4054651081081644, "purpose": "Exact M2_dynamic start 6; eta=0.40"},
+    {"start_id": 7, "source_m2_dynamic_start_id": 7, "w": 0.12, "s0": 0.45, "ell_short": 0.036, "ell_long": 0.324, "kappa": 1.1111111111111112, "ah": -1.3862943611198906, "delta0": 1.3862943611198906, "bh": 0.30, "eta_logit": 0.0, "purpose": "Exact M2_dynamic start 7; eta=0.50 (unbiased reference bias weight)"},
+    {"start_id": 8, "source_m2_dynamic_start_id": 8, "w": 0.2, "s0": 0.35, "ell_short": 0.098, "ell_long": 0.002, "kappa": 1.0, "ah": -0.6190392084062235, "delta0": 1.3862943611198906, "bh": 0.01, "eta_logit": 0.4054651081081644, "purpose": "Exact M2_dynamic start 8; eta=0.60 (substantial bias weight)"}
+  ]
+}

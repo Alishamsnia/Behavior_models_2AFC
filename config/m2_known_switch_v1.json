@@ -1,0 +1,84 @@
+{
+  "model_id": "M2_known_switch_v1",
+  "scientific_alias": "M_HMM,static+known_switch",
+  "registry_schema_version": "1.0",
+  "software_version": "0.1.0",
+  "implemented_scope": "fitted static subjective prototypes, oracle block-switch timing (no fitted hazard)",
+  "parameter_order": ["w", "s0", "ell_short", "ell_long", "kappa", "delta0"],
+  "session_policy": "independent_dynamic_episode_reset_to_neutral",
+  "source_m0_registry": {
+    "file": "config/m0_sensory_v1.json",
+    "sha256": "557c5edb6b4085db1717b511587b4658681bc4d2088e311483b5f6a6eb9041d1"
+  },
+  "prior_probability_epsilon": 1e-10,
+  "known_switch": {
+    "state_order": ["N", "S", "L"],
+    "belief_representation": "biased_subspace_log_odds_r_equals_log_P_L_over_P_S",
+    "switch_signal": "boolean_is_switch_per_trial_true_at_first_trial_of_a_new_block_only",
+    "identity_hidden": "the_model_is_never_told_which_category_the_new_block_is",
+    "prototypes": "theta_N_0.5_theta_S_sigmoid_neg_delta0_theta_L_sigmoid_delta0",
+    "hazard": "none_supplied_switch_timing_removes_the_hazard_from_the_recursion",
+    "neutral_reentry": false,
+    "biased_switch_rule": "S_to_L_and_L_to_S_only",
+    "true_block_identity_predictive_input": false,
+    "true_switch_index_predictive_input": true,
+    "delta0_zero_boundary": "constant_0.5_prior_matching_m0",
+    "delta0_log4_boundary": "exact_nesting_to_m1_known_switch_v1_test_only_not_runtime"
+  },
+  "initialization_table": {
+    "version": "m2_known_switch_exact_m0_plus_log4_v1",
+    "file": "config/initializations/m2_known_switch_v1_starts.json",
+    "sha256": "ed1345db856b30f7abdcb5434a7177d5893df43f4339c7a82068364e0e5dee20",
+    "count": 8,
+    "generation_policy": "extend_each_M0_start_by_id_with_delta0_log4"
+  },
+  "convergence": {
+    "maximum_epochs": 2000,
+    "minimum_learning_rate": 1e-6,
+    "gradient_norm_tolerance": 1e-5,
+    "meaningful_improvement_tolerance": 1e-8,
+    "no_improvement_patience_epochs": 100,
+    "stable_training_window_epochs": 25,
+    "required_checks": [
+      "finite_objective",
+      "finite_parameters",
+      "finite_gradients",
+      "small_gradient_norm",
+      "stable_fresh_training_nll",
+      "no_parameter_transform_errors",
+      "no_optimizer_runtime_errors"
+    ],
+    "note": "Matches M0/M1/M2's own convergence tolerances; no_probability_normalization_errors is dropped for the same reason as M1_known_switch_v1."
+  },
+  "fitting": {
+    "lbfgs_maximum_steps": 250,
+    "lbfgs_learning_rate": 1.0,
+    "lbfgs_history_size": 10,
+    "lbfgs_maximum_evaluations_per_step": 20,
+    "lbfgs_tolerance_grad": 1e-9,
+    "lbfgs_tolerance_change": 1e-12,
+    "lbfgs_line_search_fn": "strong_wolfe",
+    "optional_adam_warmup_steps": 1000,
+    "optional_adam_learning_rate": 0.01
+  },
+  "multi_start_selection": {
+    "winner_criterion": "lowest_recalculated_best_training_mean_nll_among_converged_runs",
+    "near_equal_training_nll_tolerance": 1e-6,
+    "identifiability_parameter_distance_threshold": 0.25,
+    "parameter_distance_scale": [0.2, 1.2, 0.2, 1.0, 1.0, 2.0],
+    "additional_starts_policy": "report_need_only_never_generate_automatically",
+    "result_schema_version": "m2_known_switch_fit_result_v1"
+  },
+  "metrics": {
+    "primary": ["elpd", "mean_nll_per_valid_trial"],
+    "secondary": ["brier_score", "classification_accuracy"],
+    "diagnostics": [
+      "calibration_curve",
+      "overall_psychometric_curve",
+      "per_session_mean_nll",
+      "trialwise_prior_long",
+      "trialwise_biased_log_odds",
+      "trialwise_decision_region_regime"
+    ]
+  }
+}

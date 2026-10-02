@@ -1,0 +1,7 @@
+{
+  "extends": "m1_known_switch_v1.json",
+  "source_m0_registry": {
+    "file": "config/m0_sensory_v1_mc07.json",
+    "sha256": "ab7fd4d3fc918b60213018cd837ce45e0bcb686f428fdd552321e3096551c1ba"
+  }
+}

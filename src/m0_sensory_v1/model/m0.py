@@ -18,6 +18,9 @@ class MaskedM0Predictions:
     probability_long: torch.Tensor
     non_lapse_probability_long: torch.Tensor
     positive_threshold_s: torch.Tensor
+    decision_lower_boundary_s: torch.Tensor
+    decision_upper_boundary_s: torch.Tensor
+    decision_regime: tuple[str, ...]
     sensory_sd_s: torch.Tensor
     valid_choice_mask: torch.Tensor
     parameters: DecodedParameters
@@ -119,7 +122,7 @@ def predict_m0_trials_with_parameters(
 
     .. math::
 
-       q_i=\Phi\left(\frac{s_i-T}{\sqrt{ws_i^2+s_0^2}}\right),
+       q_i=P[a_2X_i^2+a_1X_i+a_0>0\mid s_i],
        \epsilon_i=\ell_{\rm long}\mathbf 1(c_i=1)
        +\ell_{\rm short}\mathbf 1(c_i=0),\qquad
        p_i=(1-\epsilon_i)q_i+\epsilon_i/2.
@@ -195,6 +198,9 @@ def predict_m0_trials_with_parameters(
             probability_long=missing,
             non_lapse_probability_long=missing.clone(),
             positive_threshold_s=missing.clone(),
+            decision_lower_boundary_s=missing.clone(),
+            decision_upper_boundary_s=missing.clone(),
+            decision_regime=("not_evaluated_invalid_choice",) * duration_s.numel(),
             sensory_sd_s=missing.clone(),
             valid_choice_mask=valid,
             parameters=parameters,
@@ -202,18 +208,26 @@ def predict_m0_trials_with_parameters(
 
     valid_duration = duration_s[valid]
     valid_category = category_long[valid]
-    prior = fixed_neutral_prior(valid_duration)
+    prior = fixed_neutral_prior(parameters.w)
     bayesian = bayesian_choice_probability(valid_duration, parameters, moments, prior)
     probability = lapse_mixture(
         bayesian.probability_long, valid_category, parameters
     )
     threshold = torch.broadcast_to(bayesian.positive_threshold_s, valid_duration.shape)
+    lower = torch.broadcast_to(bayesian.decision_region.lower_boundary_s, valid_duration.shape)
+    regimes = tuple(
+        bayesian.decision_region.regime if included else "not_evaluated_invalid_choice"
+        for included in valid.reshape(-1).tolist()
+    )
     return MaskedM0Predictions(
         probability_long=_scatter_valid(probability, valid, duration_s),
         non_lapse_probability_long=_scatter_valid(
             bayesian.probability_long, valid, duration_s
         ),
         positive_threshold_s=_scatter_valid(threshold, valid, duration_s),
+        decision_lower_boundary_s=_scatter_valid(lower, valid, duration_s),
+        decision_upper_boundary_s=_scatter_valid(threshold, valid, duration_s),
+        decision_regime=regimes,
         sensory_sd_s=_scatter_valid(bayesian.sensory_sd_s, valid, duration_s),
         valid_choice_mask=valid,
         parameters=parameters,

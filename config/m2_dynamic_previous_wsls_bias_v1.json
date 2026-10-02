@@ -1,0 +1,126 @@
+{
+  "model_id": "M2_dynamic_previous_wsls_bias_v1",
+  "scientific_alias": "M_HSMM,dynamic+previous_wsls_bias",
+  "registry_schema_version": "1.0",
+  "software_version": "0.1.0",
+  "implemented_scope": "unchanged M2_dynamic_block_length_v1 fitted static-prototype, capped-tail duration-dependent-hazard HSMM, plus a fitted previous-category win-stay/lose-shift bias (the alpha=1 boundary of the previous-category delta rule) mixed between the sensory readout and lapse",
+  "parameter_order": ["w", "s0", "ell_short", "ell_long", "kappa", "ah", "delta0", "bh", "eta_logit"],
+  "session_policy": "independent_dynamic_episode_reset_to_neutral",
+  "source_m2_dynamic_block_length_registry": {
+    "file": "config/m2_dynamic_block_length_v1.json",
+    "sha256": "74334648aef05e1c9bd54dcfd6df4fa49fe9320603666b92cc25525aab7de695"
+  },
+  "hsmm": {
+    "state_order": ["N", "S", "L"],
+    "run_length_center": 23,
+    "maximum_represented_run_length": 65,
+    "tail_state_semantics": "r65_represents_R_greater_than_or_equal_to_65",
+    "tail_hazard_policy": "hazard_saturates_at_h65_and_survival_remains_in_tail",
+    "hazard": "biased_sigmoid_ah_plus_bh_times_minR65_minus_23_with_tied_neutral_half_hazard",
+    "neutral_hazard_scale": 0.5,
+    "common_hazard_across_neutral_and_biased_states": false,
+    "neutral_reentry": false,
+    "biased_switch_rule": "S_to_L_and_L_to_S_only",
+    "within_trial_order": "predict_then_emission_update_then_hsmm_transition",
+    "prototype_learning": false,
+    "true_block_predictive_input": false,
+    "true_run_length_predictive_input": false,
+    "unchanged_from_m2_dynamic_block_length_v1": "the joint block/run-length belief, hazard, feedback update, and HSMM transition are byte-for-byte the same computation as M2_dynamic_block_length_v1; only the final probability changes"
+  },
+  "wsls_bias": {
+    "combination_order": "sensory_readout_then_bias_mix_then_lapse",
+    "update_rule": "pi_next_equals_category_long_on_every_feedback_valid_trial_else_pi_unchanged",
+    "update_signal": "the_true_stimulus_category_category_long_not_the_mouse_own_observed_choice",
+    "learning_rate_parameterization": "alpha_is_the_fixed_registry_constant_1_0_not_a_fitted_coordinate",
+    "alpha_fixed_value": 1.0,
+    "alpha_one_semantics": "pi_next_collapses_exactly_to_category_long_the_true_category_on_the_last_feedback_valid_trial_the_one_step_previous_category_special_case_of_the_shared_delta_rule_matching_pure_wsls_v1s_own_fixed_alpha_convention",
+    "bias_mixing_weight_parameterization": "eta_equals_sigmoid_eta_logit_eta_logit_is_the_fitted_unconstrained_coordinate",
+    "combination_formula": "m_t_equals_one_minus_eta_times_r_t_plus_eta_times_pi_t_then_p_t_equals_lapse_mixture_of_m_t_not_of_r_t",
+    "initial_prior": "pi_1_equals_one_half_every_session",
+    "feedback_validity_gate": "update_applied_whenever_feedback_valid_is_true_regardless_of_that_trials_own_choice_validity_missing_or_invalid_feedback_leaves_pi_unchanged",
+    "choice_validity_role": "not_consulted_by_the_previous_category_update_which_fires_on_feedback_validity_alone_unlike_the_sibling_m2_dynamic_previous_action_bias_v1",
+    "prediction_uses_pre_update_pi": true,
+    "session_reset": "pi_resets_to_one_half_at_the_start_of_every_session_dynamic_state_never_crosses_a_session_boundary",
+    "relationship_to_block_belief": "pi_t_is_a_separately_updated_scalar_state_that_never_reads_or_writes_the_joint_block_run_length_belief_and_is_never_fed_into_the_sensory_readout_solver_though_both_are_gated_by_feedback_valid",
+    "choice_independence": "pi_t_and_xi_never_depend_on_choice_long_at_any_trial_since_the_update_driver_category_long_and_its_gate_feedback_valid_are_both_exogenous_task_design_quantities_this_is_why_simulation_py_can_be_fully_vectorized_unlike_the_sibling_model",
+    "eta_zero_boundary": "eta_equals_zero_reproduces_m2_dynamic_block_length_v1_exactly_constructed_via_with_explicit_eta_since_the_free_sigmoid_decoder_cannot_reach_it",
+    "sibling_relationship": "this_model_is_the_previous_category_analogue_of_m2_dynamic_previous_action_bias_v1_same_eta_mixing_architecture_and_fixed_alpha_equals_one_but_pi_t_is_driven_by_category_long_gated_by_feedback_valid_instead_of_choice_long_gated_by_choice_validity"
+  },
+  "tail_acceptance": {
+    "statistic": "mean_pre_choice_tail_probability_across_all_training_timeline_trials",
+    "maximum_accepted_value": 0.01,
+    "required_for_convergence_and_winner_eligibility": true,
+    "rationale": "more_than_one_percent_expected_tail_occupancy_can_materially_identify_bh_from_the_frozen_h65_approximation"
+  },
+  "initialization_table": {
+    "version": "m2_dynamic_exact_plus_eight_bias_weights_v1",
+    "file": "config/initializations/m2_dynamic_previous_wsls_bias_v1_starts.json",
+    "sha256": "cb2a5fda879dc430828616203bdccb23618f7516cce79e3a57b617b1d16167a4",
+    "count": 8,
+    "generation_policy": "pair_each_M2_dynamic_block_length_start_by_id_with_one_registered_eta_logit"
+  },
+  "convergence": {
+    "maximum_epochs": 2000,
+    "minimum_learning_rate": 1e-6,
+    "gradient_norm_tolerance": 1e-5,
+    "meaningful_improvement_tolerance": 1e-8,
+    "no_improvement_patience_epochs": 100,
+    "stable_training_window_epochs": 25,
+    "required_checks": [
+      "finite_objective",
+      "finite_parameters",
+      "finite_gradients",
+      "small_gradient_norm",
+      "stable_fresh_training_nll",
+      "no_parameter_transform_errors",
+      "no_probability_normalization_errors",
+      "no_optimizer_runtime_errors",
+      "tail_occupancy_acceptable"
+    ],
+    "note": "Identical to M2_dynamic_block_length_v1's own nine checks; the eta-mixture introduces no new failure mode (bounded sigmoid convex combination, no renormalization step), and pi_t's own finiteness is checked as a hard runtime error every trial, not as an optimizer convergence gate."
+  },
+  "fitting": {
+    "lbfgs_maximum_steps": 250,
+    "lbfgs_learning_rate": 1.0,
+    "lbfgs_history_size": 10,
+    "lbfgs_maximum_evaluations_per_step": 20,
+    "lbfgs_tolerance_grad": 1e-9,
+    "lbfgs_tolerance_change": 1e-12,
+    "lbfgs_line_search_fn": "strong_wolfe",
+    "optional_adam_warmup_steps": 100,
+    "optional_adam_learning_rate": 0.01
+  },
+  "multi_start_selection": {
+    "winner_criterion": "lowest_recalculated_best_training_mean_nll_among_converged_runs",
+    "near_equal_training_nll_tolerance": 1e-6,
+    "identifiability_parameter_distance_threshold": 0.25,
+    "parameter_distance_scale": [0.2, 1.2, 0.2, 1.0, 1.0, 2.0, 1.5, 0.2, 2.0],
+    "additional_starts_policy": "report_need_only_never_generate_automatically",
+    "result_schema_version": "m2_dynamic_previous_wsls_bias_fit_result_v1"
+  },
+  "metrics": {
+    "primary": ["elpd", "mean_nll_per_valid_trial", "delta_bits_per_trial_vs_m2_dynamic_block_length"],
+    "diagnostics": [
+      "calibration_curve",
+      "overall_psychometric_curve",
+      "per_session_mean_nll",
+      "prediction_distribution",
+      "joint_block_run_length_belief_trajectory",
+      "trialwise_prior_long",
+      "trialwise_non_lapse_probability_long",
+      "trialwise_bias_mixed_probability_long",
+      "trialwise_non_bias_probability_long",
+      "trialwise_previous_wsls_state",
+      "trialwise_emission_normalizer",
+      "trialwise_decision_region_regime",
+      "fitted_hazard_curve",
+      "implied_duration_distribution",
+      "tail_probability_diagnostic",
+      "bh_boundary_proximity",
+      "static_subjective_prototypes",
+      "delta0_distance_from_log4",
+      "fitted_bias_mixing_weight_eta",
+      "bias_evidence_dependence"
+    ]
+  }
+}

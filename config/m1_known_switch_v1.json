@@ -1,0 +1,89 @@
+{
+  "model_id": "M1_known_switch_v1",
+  "scientific_alias": "M_HMM,true+known_switch",
+  "registry_schema_version": "1.0",
+  "software_version": "0.1.0",
+  "implemented_scope": "fixed true-rate prototypes, oracle block-switch timing (no fitted hazard)",
+  "parameter_order": ["w", "s0", "ell_short", "ell_long", "kappa"],
+  "session_policy": "independent_dynamic_episode_reset_to_neutral",
+  "source_m0_registry": {
+    "file": "config/m0_sensory_v1.json",
+    "sha256": "557c5edb6b4085db1717b511587b4658681bc4d2088e311483b5f6a6eb9041d1"
+  },
+  "fixed_prototypes": [0.5, 0.2, 0.8],
+  "fixed_log_likelihood_ratio": 1.3862943611198906,
+  "prior_probability_epsilon": 1e-10,
+  "known_switch": {
+    "state_order": ["N", "S", "L"],
+    "belief_representation": "biased_subspace_log_odds_r_equals_log_P_L_over_P_S",
+    "switch_signal": "boolean_is_switch_per_trial_true_at_first_trial_of_a_new_block_only",
+    "identity_hidden": "the_model_is_never_told_which_category_the_new_block_is",
+    "first_switch_rule": "initializes_r_to_zero_i.e._50_50_short_long",
+    "later_switch_rule": "deterministic_sign_flip_r_pre_equals_negative_r_previous_post",
+    "no_switch_rule": "r_pre_equals_r_previous_post",
+    "hazard": "none_supplied_switch_timing_removes_the_hazard_from_the_recursion",
+    "neutral_reentry": false,
+    "biased_switch_rule": "S_to_L_and_L_to_S_only",
+    "feedback_update_order": "predict_then_biased_subspace_log_odds_update",
+    "invalid_feedback_policy": "retain_log_odds_belief",
+    "category_emission_in_outer_objective": false,
+    "true_block_identity_predictive_input": false,
+    "true_switch_index_predictive_input": true
+  },
+  "initialization_table": {
+    "version": "m1_known_switch_exact_m0_starts_v1",
+    "file": "config/initializations/m1_known_switch_v1_starts.json",
+    "sha256": "5bc8c29e008e3aa96fa11439a95af8eb3952e3e8a11293ac470d0cfccbc8088c",
+    "count": 8,
+    "generation_policy": "identical_to_m0_starts_because_no_hazard_is_fitted"
+  },
+  "convergence": {
+    "maximum_epochs": 2000,
+    "minimum_learning_rate": 1e-6,
+    "gradient_norm_tolerance": 1e-5,
+    "meaningful_improvement_tolerance": 1e-8,
+    "no_improvement_patience_epochs": 100,
+    "stable_training_window_epochs": 25,
+    "required_checks": [
+      "finite_objective",
+      "finite_parameters",
+      "finite_gradients",
+      "small_gradient_norm",
+      "stable_fresh_training_nll",
+      "no_parameter_transform_errors",
+      "no_optimizer_runtime_errors"
+    ],
+    "note": "Matches M0/M1's own convergence tolerances; no_probability_normalization_errors is dropped because this evaluator has no belief-normalization step (log-odds recursion is a plain sum, diagnostic (N,S,L) reconstruction is built directly from sigmoid())."
+  },
+  "fitting": {
+    "lbfgs_maximum_steps": 250,
+    "lbfgs_learning_rate": 1.0,
+    "lbfgs_history_size": 10,
+    "lbfgs_maximum_evaluations_per_step": 20,
+    "lbfgs_tolerance_grad": 1e-9,
+    "lbfgs_tolerance_change": 1e-12,
+    "lbfgs_line_search_fn": "strong_wolfe",
+    "optional_adam_warmup_steps": 1000,
+    "optional_adam_learning_rate": 0.01
+  },
+  "multi_start_selection": {
+    "winner_criterion": "lowest_recalculated_best_training_mean_nll_among_converged_runs",
+    "near_equal_training_nll_tolerance": 1e-6,
+    "identifiability_parameter_distance_threshold": 0.25,
+    "parameter_distance_scale": [0.2, 1.2, 0.2, 1.0, 1.0],
+    "additional_starts_policy": "report_need_only_never_generate_automatically",
+    "result_schema_version": "m1_known_switch_fit_result_v1"
+  },
+  "metrics": {
+    "primary": ["elpd", "mean_nll_per_valid_trial"],
+    "secondary": ["brier_score", "classification_accuracy"],
+    "diagnostics": [
+      "calibration_curve",
+      "overall_psychometric_curve",
+      "per_session_mean_nll",
+      "trialwise_prior_long",
+      "trialwise_biased_log_odds",
+      "trialwise_decision_region_regime"
+    ]
+  }
+}

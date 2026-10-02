@@ -21,6 +21,9 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
+from matplotlib.colors import LinearSegmentedColormap
+from matplotlib.lines import Line2D
+from matplotlib.patches import Patch
 import numpy as np
 import pandas as pd
 
@@ -36,6 +39,9 @@ from post_analysis.model_comparison.collect import (
     common_trial_subset_window_ids,
     event_aligned_unit_scalar,
     BLOCK_TRANSITION_PERFORMANCE_COLUMNS,
+    BLOCK_TRANSITION_PERFORMANCE_RELATIVE_RANGE,
+    RARE_TRIAL_PERFORMANCE_COLUMNS,
+    RARE_TRIAL_RELATIVE_RANGE,
     EVENT_ALIGNED_SPLIT_LABELS,
     EVENT_ALIGNED_SPLIT_ROLES,
     EVENT_RELATIVE_POSITIONS,
@@ -79,6 +85,8 @@ NON_SHARED_PARAM_MODELS = {
     "bh": ["M4"],
 }
 
+PARAMETER_SUMMARY_ORDER = (*SHARED_PARAM_NAMES, *NON_SHARED_PARAM_MODELS)
+
 MODEL_SPECIFIC_PARAMETER_CARDS = {
     "ah": (
         "Switch hazard and learned block duration",
@@ -104,6 +112,26 @@ MODEL_SPECIFIC_PARAMETER_CARDS = {
         "hB(r) = sigmoid[ah + bh × (r−23)], with r capped at the R≥65 tail.\n"
         "Positive bh makes a switch progressively more likely as a block runs longer; bh=0 is the "
         "exact constant-hazard M3 boundary, so positivity alone is not evidence for M4.",
+    ),
+    "bh_half_life": (
+        "Run length at half-maximum switch hazard (M4)",
+        "r* solves hB(r*) = 0.5, i.e. r* = 23 − ah/bh.\n"
+        "Plotted only where that crossing actually falls inside M4's representable run-length range "
+        "[1, 65]; outside it the fitted curve never reaches 0.5 there, so the point is left blank (NaN) "
+        "rather than showing a meaningless extrapolated run length.",
+    ),
+    "bh_hazard_curves": (
+        "M4's fitted hazard curve, one line per rolling window",
+        "hB(r) = sigmoid(ah + bh × (r−23)) plotted directly (not a derived scalar) for every M4 window.\n"
+        "Color runs from a pale tint (earliest window) to a dark shade (latest) of M4's report color, so "
+        "drift in the curve's shape across the sliding-window fits is visible at a glance. No neutral "
+        "hazard, no r=23 marker -- see fig22 for the full-size standalone version of this same plot.",
+    ),
+    "bh_hazard_at_r20": (
+        "Switch hazard probability at r=20 (M4)",
+        "hB(20) = sigmoid[ah + bh × (20−23)], evaluated at run length r=20 rather than the registered "
+        "center r=23.\nM1-M3 have no run-length dependence (hB is constant in r), so this value only "
+        "carries information beyond raw ah for M4 -- shown here for M4 only.",
     ),
 }
 
@@ -451,28 +479,112 @@ def fig_global_and_detailed_nll(
     _save(fig, figures_dir, "fig01_sliding_window_global_and_detailed_nll")
 
 
-def fig_window_nll_trajectory(sw_split_session: pd.DataFrame, figures_dir) -> None:
-    """Mean NLL across the 32 rolling windows (x = test-session chronological
-    rank), one line per model, for train, validation, and test splits.
-    """
+def _window_nll_trajectory_data(
+    sw_split_session: pd.DataFrame,
+    sw_trial_subset: pd.DataFrame,
+    split_role: str,
+    model_id: str,
+) -> pd.DataFrame:
+    """Join each existing pooled mean to its within-window trial-level SEM."""
+    required_uncertainty_columns = {"mean_nll", "nll_sem", "n_trials"}
+    if missing := required_uncertainty_columns.difference(sw_trial_subset.columns):
+        raise ValueError(
+            "sliding_window_trial_subset_metrics.csv is missing Figure 02 "
+            f"uncertainty column(s) {sorted(missing)}; rerun "
+            "model_comparison.collect before rendering fig02"
+        )
+    keys = ["model_id", "window_id", "split_role"]
+    centers = sw_split_session[
+        (sw_split_session["split_role"] == split_role)
+        & (sw_split_session["session_id"] == "ALL_SESSIONS")
+        & (sw_split_session["model_id"] == model_id)
+    ].copy()
+    uncertainty = sw_trial_subset[
+        (sw_trial_subset["split_role"] == split_role)
+        & (sw_trial_subset["trial_subset"] == "all")
+        & (sw_trial_subset["model_id"] == model_id)
+    ][keys + ["mean_nll", "nll_sem", "n_trials"]].copy()
+    uncertainty = uncertainty.rename(columns={"mean_nll": "trial_mean_nll"})
+    result = centers.merge(
+        uncertainty, on=keys, how="left", validate="one_to_one", indicator=True,
+    )
+    if not result["_merge"].eq("both").all():
+        missing_windows = result.loc[result["_merge"] != "both", "window_id"].tolist()
+        raise ValueError(
+            f"Missing trial-level SEM rows for {model_id}/{split_role} window(s) "
+            f"{missing_windows}; rerun model_comparison.collect"
+        )
+    center = pd.to_numeric(result["mean_nll"], errors="coerce")
+    trial_center = pd.to_numeric(result["trial_mean_nll"], errors="coerce")
+    centers_match = (
+        np.isfinite(center)
+        & np.isfinite(trial_center)
+        & np.isclose(center, trial_center, rtol=1e-10, atol=1e-12)
+    )
+    if not centers_match.all():
+        bad_windows = result.loc[~centers_match, "window_id"].tolist()
+        raise ValueError(
+            f"Pooled and trial-level mean NLL disagree for {model_id}/{split_role} "
+            f"window(s) {bad_windows}; rerun collection from consistent inputs"
+        )
+    result["nll_sem"] = pd.to_numeric(result["nll_sem"], errors="coerce")
+    result["n_trials"] = pd.to_numeric(result["n_trials"], errors="coerce")
+    invalid_count = (
+        ~np.isfinite(result["n_trials"])
+        | (result["n_trials"] < 1)
+        | (result["n_trials"] % 1 != 0)
+    )
+    invalid_sem = (
+        invalid_count
+        | (
+            (result["n_trials"] >= 2)
+            & (~np.isfinite(result["nll_sem"]) | (result["nll_sem"] < 0))
+        )
+    )
+    if invalid_sem.any():
+        bad_windows = result.loc[invalid_sem, "window_id"].tolist()
+        raise ValueError(
+            f"Invalid trial-level SEM values for {model_id}/{split_role} window(s) "
+            f"{bad_windows}; rerun model_comparison.collect"
+        )
+    result.loc[result["n_trials"] == 1, "nll_sem"] = np.nan
+    return result.drop(columns=["_merge"]).sort_values("test_rank")
+
+
+def fig_window_nll_trajectory(
+    sw_split_session: pd.DataFrame,
+    sw_trial_subset: pd.DataFrame,
+    figures_dir,
+) -> None:
+    """Pooled mean NLL +/- within-window individual-trial SEM by split."""
     fig, axes = plt.subplots(3, 1, figsize=(9.5, 9.5), sharex=True)
     for ax, split_role in zip(axes, ["train", "validation", "test"]):
-        detailed = sw_split_session[
-            (sw_split_session["split_role"] == split_role)
-            & (sw_split_session["session_id"] == "ALL_SESSIONS")
-        ]
         for model_id in MODEL_ORDER:
-            subset = detailed[detailed["model_id"] == model_id].sort_values("test_rank")
+            subset = _window_nll_trajectory_data(
+                sw_split_session, sw_trial_subset, split_role, model_id,
+            )
             if subset.empty:
                 continue
-            ax.plot(
-                subset["test_rank"], subset["mean_nll"], marker="o", markersize=3.5,
-                linewidth=1.4, color=MODEL_COLORS[model_id], label=MODEL_LABELS[model_id],
+            ax.errorbar(
+                subset["test_rank"], subset["mean_nll"], yerr=subset["nll_sem"],
+                fmt="-o", markersize=3.5, linewidth=1.4, elinewidth=0.9,
+                capsize=2.0, capthick=0.9, color=MODEL_COLORS[model_id],
+                label=MODEL_LABELS[model_id],
             )
-        ax.set_ylabel(f"{split_role.capitalize()} mean NLL")
+        ax.set_ylabel("Mean NLL")
+        if split_role == "test":
+            ax.set_title(
+                "Test mean NLL ± SEM across individual-trial NLL values "
+                "(within each held-out session)"
+            )
+        else:
+            ax.set_title(
+                f"{split_role.capitalize()} mean NLL ± SEM across individual-trial "
+                "NLL values (within each window)"
+            )
     axes[-1].set_xlabel("Rolling-window test session (chronological rank)")
     axes[0].legend(loc="upper right", ncol=5, bbox_to_anchor=(1.0, 1.35))
-    fig.suptitle("Held-out NLL across the 32 rolling windows", y=1.0, fontsize=12.5)
+    fig.suptitle("NLL across the 32 rolling windows", y=1.0, fontsize=12.5)
     fig.tight_layout()
     _save(fig, figures_dir, "fig02_sliding_window_nll_trajectory")
 
@@ -713,6 +825,128 @@ def fig_shared_parameter_trajectories(sw_params: pd.DataFrame, figures_dir) -> N
     _save(fig, figures_dir, "fig05_shared_parameter_trajectories")
 
 
+def _parameter_summary_models(param_name: str) -> list[str]:
+    """Models that fit one constrained parameter, in nesting order."""
+    return MODEL_ORDER if param_name in SHARED_PARAM_NAMES else NON_SHARED_PARAM_MODELS[param_name]
+
+
+def summarize_sliding_window_parameters(sw_params: pd.DataFrame) -> pd.DataFrame:
+    """Mean and sample SD of each fitted parameter across rolling windows.
+
+    All expected model/parameter combinations are returned, including groups
+    with no finite values (``n_windows=0``), so Figure 21 always preserves its
+    required 5/4/3/2/1 model layout.
+    """
+    required = {"model_id", "window_id", "param_name", "param_value"}
+    if missing := required.difference(sw_params.columns):
+        raise ValueError(
+            f"sliding_window_parameters.csv missing column(s) {sorted(missing)}"
+        )
+
+    unknown_models = sorted(set(sw_params["model_id"].dropna()) - set(MODEL_ORDER))
+    if sw_params["model_id"].isna().any() or unknown_models:
+        raise ValueError(f"Unexpected sliding-window parameter models: {unknown_models}")
+    if sw_params["window_id"].isna().any():
+        raise ValueError("Sliding-window parameter rows must have a window_id")
+    placeholder = sw_params["param_name"].isna()
+    invalid_placeholder = placeholder & sw_params["param_value"].notna()
+    if invalid_placeholder.any():
+        raise ValueError("Null parameter names are only valid for empty-fit placeholder rows")
+
+    data = sw_params.loc[~placeholder].copy()
+    unknown_params = sorted(set(data["param_name"].dropna()) - set(PARAMETER_SUMMARY_ORDER))
+    if unknown_params:
+        raise ValueError(f"Unexpected sliding-window parameters: {unknown_params}")
+    if data.duplicated(["model_id", "window_id", "param_name"]).any():
+        raise ValueError("Duplicate (model_id, window_id, param_name) parameter rows")
+
+    expected_pairs = {
+        (param_name, model_id)
+        for param_name in PARAMETER_SUMMARY_ORDER
+        for model_id in _parameter_summary_models(param_name)
+    }
+    observed_pairs = set(zip(data["param_name"], data["model_id"]))
+    if invalid_pairs := sorted(observed_pairs - expected_pairs):
+        raise ValueError(f"Model does not fit the supplied parameter: {invalid_pairs}")
+
+    numeric_values = pd.to_numeric(data["param_value"], errors="coerce")
+    invalid_numeric = data["param_value"].notna() & numeric_values.isna()
+    if invalid_numeric.any():
+        raise ValueError("Sliding-window parameter values must be numeric")
+    data["param_value"] = numeric_values
+    data = data[np.isfinite(data["param_value"])]
+
+    rows = []
+    for param_name in PARAMETER_SUMMARY_ORDER:
+        for model_id in _parameter_summary_models(param_name):
+            subset = data[
+                (data["param_name"] == param_name) & (data["model_id"] == model_id)
+            ]
+            values = subset["param_value"]
+            n_windows = int(subset["window_id"].nunique())
+            rows.append({
+                "param_name": param_name,
+                "model_id": model_id,
+                "mean": float(values.mean()) if n_windows else float("nan"),
+                "sd": float(values.std(ddof=1)) if n_windows >= 2 else float("nan"),
+                "n_windows": n_windows,
+            })
+    return pd.DataFrame(rows)
+
+
+def fig_sliding_window_parameter_mean_sd(
+    sw_params: pd.DataFrame, mouse_id: str, figures_dir,
+) -> None:
+    """Nine-panel mean ± SD summary of constrained rolling-window parameters."""
+    summary = summarize_sliding_window_parameters(sw_params)
+    fig, axes = plt.subplots(3, 3, figsize=(15.0, 11.0))
+    for ax, param_name in zip(axes.flat, PARAMETER_SUMMARY_ORDER):
+        model_ids = _parameter_summary_models(param_name)
+        panel = summary[summary["param_name"] == param_name].set_index("model_id")
+        for x, model_id in enumerate(model_ids):
+            row = panel.loc[model_id]
+            if not np.isfinite(row["mean"]):
+                continue
+            if row["n_windows"] >= 2 and np.isfinite(row["sd"]):
+                ax.errorbar(
+                    x, row["mean"], yerr=row["sd"], fmt="o", markersize=7,
+                    capsize=5, capthick=1.3, elinewidth=1.3,
+                    color=MODEL_COLORS[model_id], markeredgecolor="black",
+                    markeredgewidth=0.6,
+                )
+            else:
+                ax.plot(
+                    x, row["mean"], marker="o", markersize=7, linestyle="none",
+                    color=MODEL_COLORS[model_id], markeredgecolor="black",
+                    markeredgewidth=0.6,
+                )
+        if param_name in {"alpha_theta", "bh"}:
+            ax.axhline(0, color="0.45", linestyle="--", linewidth=0.8, zorder=0)
+        ax.set_xticks(range(len(model_ids)))
+        ax.set_xticklabels([
+            f"{model_id}\n(n={int(panel.loc[model_id, 'n_windows'])})"
+            for model_id in model_ids
+        ])
+        ax.set_xlim(-0.6, max(len(model_ids) - 0.4, 0.6))
+        ax.set_title(param_name)
+        ax.set_ylabel("Constrained fitted value")
+
+    fig.suptitle(
+        f"Sliding-window fitted parameters: mean ± SD — {mouse_id}",
+        y=0.995, fontsize=13,
+    )
+    fig.text(
+        0.5, 0.012,
+        "Dots are means and whiskers are ±1 sample SD across each model's finite fitted rolling-window "
+        "values (n shown below each model). Models can have different available windows; rolling windows "
+        "overlap, so variability is descriptive rather than independent-sample uncertainty. Symmetric SD "
+        "whiskers are not parameter bounds and may extend outside a parameter's valid domain.",
+        ha="center", fontsize=8.5, style="italic", wrap=True,
+    )
+    fig.tight_layout(rect=[0, 0.055, 1, 0.965], h_pad=2.0, w_pad=2.2)
+    _save(fig, figures_dir, "fig21_sliding_window_parameter_mean_sd")
+
+
 def _sigmoid_series(values: pd.Series) -> pd.Series:
     return pd.Series(1.0 / (1.0 + np.exp(-values.to_numpy(dtype=float))), index=values.index)
 
@@ -723,6 +957,56 @@ def _sigmoid_series(values: pd.Series) -> pd.Series:
 # architectural constants of the frozen M4 spec, not fitted per window.
 _M4_HAZARD_CENTER = 23
 _M4_MAXIMUM_REPRESENTED_RUN_LENGTH = 65
+
+# Pale tint -> M4's report color -> dark shade, used to order M4's per-window
+# hazard curves chronologically (fig09's bh_hazard_curves row and fig22).
+_M4_HAZARD_CURVE_COLORMAP = LinearSegmentedColormap.from_list(
+    "m4_hazard_curve_order", ["#F6E1EE", MODEL_COLORS["M4"], "#3B0A24"],
+)
+
+
+def _m4_hazard_curve(ah: float, bh: float, run_lengths: np.ndarray) -> np.ndarray:
+    """hB(r) = sigmoid(ah + bh*(r-23)) for one fitted (ah, bh), evaluated at
+    ``run_lengths`` (see ``m4_hsmm_delta_v1.parameters.M4DecodedParameters.
+    hazard``, which this duplicates in closed form -- no lapse term)."""
+    return 1.0 / (1.0 + np.exp(-(ah + bh * (run_lengths - _M4_HAZARD_CENTER))))
+
+
+def _plot_m4_hazard_curve_family(ax: plt.Axes, sw_params: pd.DataFrame, *, colorbar: bool = True) -> None:
+    """M4's fitted biased hazard hB(r) for every rolling window, one line
+    each, ordered chronologically (test_rank) from a pale tint (earliest) to
+    a dark shade (latest) of M4's report color. No neutral hazard, no r=23
+    reference line -- shared by fig09's bh_hazard_curves row and fig22 so
+    the two can't drift apart.
+    """
+    ah_series = _param_series_by_model(sw_params, "ah").get("M4")
+    bh_series = _param_series_by_model(sw_params, "bh").get("M4")
+    if ah_series is None or bh_series is None:
+        ax.text(0.5, 0.5, "No M4 windows available", ha="center", va="center", transform=ax.transAxes)
+        return
+    joined = pd.concat({"ah": ah_series, "bh": bh_series}, axis=1).dropna().sort_index()
+    if joined.empty:
+        ax.text(0.5, 0.5, "No M4 windows available", ha="center", va="center", transform=ax.transAxes)
+        return
+    run_lengths = np.arange(1, _M4_MAXIMUM_REPRESENTED_RUN_LENGTH + 1, dtype=float)
+    colors = _M4_HAZARD_CURVE_COLORMAP(np.linspace(0.08, 0.95, len(joined)))
+    for color, (_, row) in zip(colors, joined.iterrows()):
+        ax.plot(
+            run_lengths, _m4_hazard_curve(row["ah"], row["bh"], run_lengths),
+            color=color, linewidth=1.1, alpha=0.9, zorder=2,
+        )
+    ax.set_ylim(0, 1)
+    ax.set_xlim(1, _M4_MAXIMUM_REPRESENTED_RUN_LENGTH)
+    ax.set_ylabel("hB(r)")
+    if colorbar:
+        scalar_mappable = plt.cm.ScalarMappable(
+            cmap=_M4_HAZARD_CURVE_COLORMAP,
+            norm=plt.Normalize(vmin=joined.index.min(), vmax=joined.index.max()),
+        )
+        scalar_mappable.set_array([])
+        cbar = ax.figure.colorbar(scalar_mappable, ax=ax, pad=0.014, fraction=0.035)
+        cbar.set_label("Test rank\n(chronological)", fontsize=7.5)
+        cbar.ax.tick_params(labelsize=7)
 
 
 def _m4_expected_block_length(ah: float, bh: float) -> float:
@@ -834,6 +1118,46 @@ def _derived_quantity_curves(
             hazard_65 = _sigmoid_series(joined["ah"] + joined["bh"] * 42)
             derived[model_id] = hazard_65 - hazard_23
         return [("hB(r=65) − hB(r=23)", "Excess switch hazard by run length", derived)]
+    if param_name == "bh_half_life":
+        ah_raw = _param_series_by_model(sw_params, "ah")
+        bh_raw = _param_series_by_model(sw_params, "bh")
+        derived = {}
+        for model_id, bh_series in bh_raw.items():
+            ah_series = ah_raw.get(model_id)
+            if ah_series is None:
+                continue
+            joined = pd.concat({"ah": ah_series, "bh": bh_series}, axis=1).dropna()
+            if joined.empty:
+                continue
+            with np.errstate(divide="ignore", invalid="ignore"):
+                r_half = _M4_HAZARD_CENTER - joined["ah"] / joined["bh"]
+            in_range = r_half.between(1, _M4_MAXIMUM_REPRESENTED_RUN_LENGTH)
+            derived[model_id] = r_half.where(in_range)
+        return [(
+            "r where hB(r) = 0.5 (blank if the crossing falls outside [1, 65])",
+            "Represented run length r (trials)",
+            derived,
+        )]
+    if param_name == "bh_hazard_at_r20":
+        fixed_run_length = 20
+        ah_raw = _param_series_by_model(sw_params, "ah")
+        bh_raw = _param_series_by_model(sw_params, "bh")
+        derived = {}
+        for model_id, bh_series in bh_raw.items():
+            ah_series = ah_raw.get(model_id)
+            if ah_series is None:
+                continue
+            joined = pd.concat({"ah": ah_series, "bh": bh_series}, axis=1).dropna()
+            if joined.empty:
+                continue
+            derived[model_id] = _sigmoid_series(
+                joined["ah"] + joined["bh"] * (fixed_run_length - _M4_HAZARD_CENTER)
+            )
+        return [(
+            "hB(r=20) = sigmoid[ah + bh×(20−23)]",
+            "Switch hazard probability at r=20",
+            derived,
+        )]
     raise ValueError(f"No derived-quantity definition registered for {param_name!r}")
 
 
@@ -849,44 +1173,94 @@ def _linear_trend(series: pd.Series, all_ranks: list) -> pd.Series | None:
     return pd.Series(slope * ranks + intercept, index=all_ranks)
 
 
+
+# Row order for fig09. The first four are real fitted coordinates (one raw
+# trajectory each, column 1); the last three are pure derived views of
+# ah/bh with no fitted coordinate of their own, so column 1 is blank for
+# them (``_MODEL_SPECIFIC_ROW_RAW_PARAM[row] is None``) except
+# "bh_hazard_curves", which uses column 1 for the hazard-curve family plot
+# instead (a different x-axis -- represented run length, not chronological
+# window rank -- so it is deliberately excluded from that column's shared x).
+_MODEL_SPECIFIC_ROWS = (
+    "ah", "delta0", "alpha_theta", "bh",
+    "bh_half_life", "bh_hazard_curves", "bh_hazard_at_r20",
+)
+_MODEL_SPECIFIC_ROW_RAW_PARAM = {
+    "ah": "ah", "delta0": "delta0", "alpha_theta": "alpha_theta", "bh": "bh",
+    "bh_half_life": None, "bh_hazard_curves": None, "bh_hazard_at_r20": None,
+}
+
+
 def fig_sliding_window_model_specific_parameters(
     sw_params: pd.DataFrame, mouse_id: str, figures_dir,
 ) -> None:
     """Trajectories for the parameters each nested model adds beyond the
     shared five (ah, delta0, alpha_theta, bh) -- only plotted for the models
-    that actually fit that coordinate.
+    that actually fit that coordinate -- plus three pure-derived M4 hazard
+    views (see ``_MODEL_SPECIFIC_ROWS``).
     """
-    param_names = list(NON_SHARED_PARAM_MODELS.keys())
     curve_linestyles = ["-", "--"]
+    n_rows = len(_MODEL_SPECIFIC_ROWS)
     fig, axes = plt.subplots(
-        len(param_names), 3, figsize=(21.5, 11.5), sharex="col",
+        n_rows, 3, figsize=(21.5, 20.0),
         gridspec_kw={"width_ratios": [2.25, 1.0, 2.0]},
     )
     all_ranks = sorted(pd.to_numeric(sw_params["test_rank"], errors="coerce").dropna().unique())
-    for row_index, param_name in enumerate(param_names):
+    hazard_curve_row_index = _MODEL_SPECIFIC_ROWS.index("bh_hazard_curves")
+
+    # Column 1 and column 3 share an x-axis (chronological test rank) across
+    # every row EXCEPT the hazard-curve-family row, whose x-axis is
+    # represented run length r -- sharing it with the rest would force a
+    # nonsensical common range on every other row.
+    for col in (0, 2):
+        shared_rows = [i for i in range(n_rows) if i != hazard_curve_row_index]
+        reference_ax = axes[shared_rows[0], col]
+        for row_index in shared_rows[1:]:
+            axes[row_index, col].sharex(reference_ax)
+        for row_index in shared_rows[:-1]:
+            plt.setp(axes[row_index, col].get_xticklabels(), visible=False)
+    # Column 1's last row with real (non-blank) content is "bh" (row 3), not
+    # the grid's actual last row -- rows 4 and 6 turn column 1 off entirely
+    # (pure-derived rows), so re-show the tick labels the loop above hid.
+    plt.setp(axes[3, 0].get_xticklabels(), visible=True)
+
+    for row_index, row_key in enumerate(_MODEL_SPECIFIC_ROWS):
         ax, meaning_ax, derived_ax = axes[row_index]
-        subset_all = sw_params[sw_params["param_name"] == param_name]
-        for model_id in NON_SHARED_PARAM_MODELS[param_name]:
-            subset = subset_all[subset_all["model_id"] == model_id].sort_values("test_rank")
-            if subset.empty:
-                continue
-            if subset["test_rank"].duplicated().any():
-                raise ValueError(f"Duplicate test ranks for {model_id}/{param_name}")
-            trajectory = pd.DataFrame({"test_rank": all_ranks}).merge(
-                subset[["test_rank", "param_value"]], on="test_rank", how="left",
+        raw_param_name = _MODEL_SPECIFIC_ROW_RAW_PARAM[row_key]
+
+        if row_key == "bh_hazard_curves":
+            _plot_m4_hazard_curve_family(ax, sw_params)
+            ax.set_xlabel("Represented run length r (trials)")
+        elif raw_param_name is not None:
+            subset_all = sw_params[sw_params["param_name"] == raw_param_name]
+            for model_id in NON_SHARED_PARAM_MODELS[raw_param_name]:
+                subset = subset_all[subset_all["model_id"] == model_id].sort_values("test_rank")
+                if subset.empty:
+                    continue
+                if subset["test_rank"].duplicated().any():
+                    raise ValueError(f"Duplicate test ranks for {model_id}/{raw_param_name}")
+                trajectory = pd.DataFrame({"test_rank": all_ranks}).merge(
+                    subset[["test_rank", "param_value"]], on="test_rank", how="left",
+                )
+                ax.plot(
+                    trajectory["test_rank"], trajectory["param_value"], markersize=3,
+                    linewidth=1.2, color=MODEL_COLORS[model_id],
+                    linestyle=MODEL_LINESTYLES[model_id], marker=MODEL_MARKERS[model_id],
+                    label=f"{MODEL_LABELS[model_id]} ({subset['param_value'].notna().sum()} fitted windows)",
+                )
+            if raw_param_name in {"alpha_theta", "bh"}:
+                ax.axhline(0, color="0.35", linestyle="--", linewidth=0.9, zorder=0)
+            ax.set_ylabel(raw_param_name)
+            ax.legend(loc="upper right", ncol=len(NON_SHARED_PARAM_MODELS[raw_param_name]), fontsize=8)
+        else:
+            ax.axis("off")
+            ax.text(
+                0.5, 0.5, "derived from ah & bh\n(rows 1, 4 above)", transform=ax.transAxes,
+                ha="center", va="center", fontsize=8, color="0.5", style="italic",
             )
-            ax.plot(
-                trajectory["test_rank"], trajectory["param_value"], markersize=3,
-                linewidth=1.2, color=MODEL_COLORS[model_id],
-                linestyle=MODEL_LINESTYLES[model_id], marker=MODEL_MARKERS[model_id],
-                label=f"{MODEL_LABELS[model_id]} ({subset['param_value'].notna().sum()} fitted windows)",
-            )
-        if param_name in {"alpha_theta", "bh"}:
-            ax.axhline(0, color="0.35", linestyle="--", linewidth=0.9, zorder=0)
-        ax.set_ylabel(param_name)
-        ax.legend(loc="upper right", ncol=len(NON_SHARED_PARAM_MODELS[param_name]), fontsize=8)
+
         meaning_ax.axis("off")
-        heading, explanation = MODEL_SPECIFIC_PARAMETER_CARDS[param_name]
+        heading, explanation = MODEL_SPECIFIC_PARAMETER_CARDS[row_key]
         meaning_ax.text(
             0.02, 0.88, heading, transform=meaning_ax.transAxes,
             ha="left", va="top", fontsize=10.5, fontweight="bold",
@@ -897,11 +1271,15 @@ def fig_sliding_window_model_specific_parameters(
             bbox={"boxstyle": "round,pad=0.55", "facecolor": "0.97", "edgecolor": "0.82"},
         )
 
+        if row_key == "bh_hazard_curves":
+            derived_ax.axis("off")
+            continue
+
         # Third column: the closed-form quantity the explanation actually
         # defines (e.g. expected block length, not raw ah), plus a per-model
         # straight-line trend summarizing its drift across chronological
         # sessions.
-        curves = _derived_quantity_curves(param_name, sw_params)
+        curves = _derived_quantity_curves(row_key, sw_params)
         for curve_index, (curve_label, y_label, model_series) in enumerate(curves):
             style = curve_linestyles[curve_index % len(curve_linestyles)]
             for model_id, series in model_series.items():
@@ -918,7 +1296,7 @@ def fig_sliding_window_model_specific_parameters(
                     all_ranks, trend.to_numpy(dtype=float), color=MODEL_COLORS[model_id],
                     linestyle=style, linewidth=2.6, alpha=0.30, zorder=1,
                 )
-        if param_name in {"alpha_theta", "bh"}:
+        if row_key in {"alpha_theta", "bh"}:
             derived_ax.axhline(0, color="0.35", linestyle="--", linewidth=0.9, zorder=0)
         derived_ax.set_ylabel(curves[0][1], fontsize=9.5)
         derived_ax.set_title(" | ".join(c[0] for c in curves), fontsize=8.3)
@@ -931,18 +1309,21 @@ def fig_sliding_window_model_specific_parameters(
                            label="Linear trend across sessions"),
             ]
             derived_ax.legend(handles=legend_handles, loc="best", fontsize=6.6, framealpha=0.85)
-    axes[-1, 0].set_xlabel("Rolling-window test session (chronological rank)")
+    axes[3, 0].set_xlabel("Rolling-window test session (chronological rank)")
     axes[-1, 2].set_xlabel("Rolling-window test session (chronological rank)")
     fig.suptitle(
         f"Model-specific parameters across rolling windows -- {mouse_id}",
         y=0.995, fontsize=12.5,
     )
     fig.text(
-        0.5, 0.008,
+        0.5, 0.005,
         "Single mouse; point estimates from overlapping rolling windows. Lines show chronological "
         "sequence, not independent replications. Gaps are unavailable fits; a model absent from a row "
         "does not contain that parameter. Column 3 plots the closed-form quantity named in column 2's "
-        "explanation (derived from column 1's fitted values) with a per-model linear-trend overlay.",
+        "explanation (derived from column 1's fitted values) with a per-model linear-trend overlay, "
+        "except the hazard-curve-family row, which plots hB(r) directly in column 1 against represented "
+        "run length r (not chronological rank -- that row's x-axis is intentionally not shared with the "
+        "others).",
         ha="center", fontsize=8.5, style="italic",
     )
     fig.tight_layout(rect=[0, 0.035, 1, 0.975])
@@ -1805,15 +2186,142 @@ def fig_psychometric_comparison(summary: pd.DataFrame, mouse_id: str, figures_di
     _save(fig, figures_dir, "fig18_psychometric_comparison")
 
 
+_FIGURE19_RELATIVE_POSITIONS = pd.Index(
+    tuple(BLOCK_TRANSITION_PERFORMANCE_RELATIVE_RANGE), name="relative_position",
+)
+
+
+def _window_count_range_label(
+    counts: pd.Series, support: str, positions: pd.Index = _FIGURE19_RELATIVE_POSITIONS,
+) -> str:
+    """Compact pointwise-window-count label for a Figure 19/23-style panel."""
+    counts = pd.to_numeric(counts, errors="coerce").reindex(
+        positions, fill_value=0,
+    ).fillna(0)
+    lo, hi = int(counts.min()), int(counts.max())
+    count = str(lo) if lo == hi else f"{lo}–{hi}"
+    return f"N={count} {support} windows/position"
+
+
+def _matched_block_transition_overlay_summary(
+    panel: pd.DataFrame, *, label: str = "Figure 19",
+) -> pd.DataFrame:
+    """Summarize one Figure 19/23-style overlay panel on pointwise common support.
+
+    At each relative position, only window IDs represented exactly once for
+    every model are retained. The five copies of the observed mouse statistic
+    and trial count must agree before one copy is used, preventing the mouse's
+    uncertainty from being spuriously reduced by treating model copies as
+    independent observations.
+    """
+    columns = ["series_id", "relative_position", "mean", "sem", "n_windows"]
+    if panel.empty:
+        return pd.DataFrame(columns=columns)
+
+    required_columns = {
+        "model_id", "window_id", "relative_position", "mean_mouse_correct",
+        "mean_model_probability_correct", "n_trials", "support_signature",
+    }
+    missing_columns = required_columns - set(panel.columns)
+    if missing_columns:
+        raise ValueError(
+            f"{label} table is stale or malformed; rerun the collection stage. "
+            f"Missing columns: {sorted(missing_columns)}"
+        )
+    work = panel.loc[panel["model_id"].isin(MODEL_ORDER)].copy()
+    key_columns = ["model_id", "window_id", "relative_position"]
+    duplicated = work.duplicated(key_columns, keep=False)
+    if duplicated.any():
+        examples = work.loc[duplicated, key_columns].head().to_dict("records")
+        raise ValueError(f"Duplicate {label} overlay rows: {examples}")
+
+    numeric_columns = [
+        "mean_mouse_correct", "mean_model_probability_correct", "n_trials",
+    ]
+    work[numeric_columns] = work[numeric_columns].apply(pd.to_numeric, errors="coerce")
+    summaries = []
+    for relative_position, position_rows in work.groupby("relative_position", sort=True):
+        windows_by_model = [
+            set(position_rows.loc[position_rows["model_id"] == model_id, "window_id"].dropna())
+            for model_id in MODEL_ORDER
+        ]
+        common_windows = set.intersection(*windows_by_model) if all(windows_by_model) else set()
+        validated_units = []
+        for window_id in common_windows:
+            unit = position_rows.loc[position_rows["window_id"] == window_id]
+            if len(unit) != len(MODEL_ORDER) or set(unit["model_id"]) != set(MODEL_ORDER):
+                raise ValueError(
+                    f"Malformed {label} overlay rows for "
+                    f"window={window_id}, relative_position={relative_position}"
+                )
+            if not np.isfinite(unit[numeric_columns].to_numpy(dtype=float)).all():
+                raise ValueError(
+                    f"Non-finite {label} overlay values for "
+                    f"window={window_id}, relative_position={relative_position}"
+                )
+            mouse_values = unit["mean_mouse_correct"].to_numpy(dtype=float)
+            trial_counts = unit["n_trials"].to_numpy(dtype=float)
+            support_signatures = unit["support_signature"]
+            if (
+                support_signatures.isna().any()
+                or support_signatures.astype(str).str.strip().eq("").any()
+            ):
+                raise ValueError(
+                    f"Missing trial support signature for {label} overlay at "
+                    f"window={window_id}, relative_position={relative_position}"
+                )
+            support_signatures = support_signatures.astype(str)
+            if not np.allclose(mouse_values, mouse_values[0], rtol=1e-12, atol=1e-12):
+                raise ValueError(
+                    f"Mouse correctness differs across models for {label} overlay at "
+                    f"window={window_id}, relative_position={relative_position}"
+                )
+            if not np.all(trial_counts == trial_counts[0]):
+                raise ValueError(
+                    f"Trial counts differ across models for {label} overlay at "
+                    f"window={window_id}, relative_position={relative_position}"
+                )
+            if support_signatures.nunique(dropna=False) != 1:
+                raise ValueError(
+                    f"Trial support differs across models for {label} overlay at "
+                    f"window={window_id}, relative_position={relative_position}"
+                )
+            validated_units.append(unit)
+
+        if not validated_units:
+            continue
+        matched = pd.concat(validated_units, ignore_index=True)
+        n_windows = len(validated_units)
+        mouse_values = matched.loc[
+            matched["model_id"] == MODEL_ORDER[0], "mean_mouse_correct",
+        ]
+        summaries.append({
+            "series_id": "Mouse", "relative_position": int(relative_position),
+            "mean": float(mouse_values.mean()), "sem": float(mouse_values.sem()),
+            "n_windows": n_windows,
+        })
+        for model_id in MODEL_ORDER:
+            model_values = matched.loc[
+                matched["model_id"] == model_id, "mean_model_probability_correct",
+            ]
+            summaries.append({
+                "series_id": model_id, "relative_position": int(relative_position),
+                "mean": float(model_values.mean()), "sem": float(model_values.sem()),
+                "n_windows": n_windows,
+            })
+    return pd.DataFrame(summaries, columns=columns)
+
+
 def fig_block_transition_performance_by_trial_type(
     block_transition_performance: pd.DataFrame, mouse_id: str, figures_dir,
 ) -> None:
-    """Figure 19: one page per model (5 pages; PDF only, no PNGs -- see
-    ``_save_pdf_pages``). Each page is a plain 4x4 grid of Axes (rows =
+    """Figure 19: one page per model plus an all-model overlay (6 pages;
+    PDF only, no PNGs -- see ``_save_pdf_pages``). Each page is a plain 4x4
+    grid of Axes (rows =
     ``EVENT_ALIGNED_SPLIT_ROLES``, columns =
     ``BLOCK_TRANSITION_PERFORMANCE_COLUMNS``): the mouse's actual
     correctness (black) versus that model's expected correctness (color)
-    across trials -10..+10 around a block transition, restricted to the
+    across trials -15..+20 around a block transition, restricted to the
     column's own trial type (short/long stimulus) at each relative
     position. Mirrors the per-model "block transition performance" figure
     already generated under each model's own ``global_figures/`` (see
@@ -1829,8 +2337,20 @@ def fig_block_transition_performance_by_trial_type(
     y-axes are left to auto-scale (not fixed to 0-1) so that variation is
     visible regardless of a panel's own range.
     """
-    pages = []
     n_rows, n_cols = len(EVENT_ALIGNED_SPLIT_ROLES), len(BLOCK_TRANSITION_PERFORMANCE_COLUMNS)
+    overlay_summaries = {}
+    for split_role in EVENT_ALIGNED_SPLIT_ROLES:
+        for event_category, trial_type, _ in BLOCK_TRANSITION_PERFORMANCE_COLUMNS:
+            panel = block_transition_performance[
+                (block_transition_performance["split_role"] == split_role)
+                & (block_transition_performance["event_category"] == event_category)
+                & (block_transition_performance["trial_type"] == trial_type)
+            ]
+            overlay_summaries[(split_role, event_category, trial_type)] = (
+                _matched_block_transition_overlay_summary(panel)
+            )
+
+    pages = []
     for model_id in MODEL_ORDER:
         fig, axes = plt.subplots(n_rows, n_cols, figsize=(20.0, 16.0))
         for row_index, split_role in enumerate(EVENT_ALIGNED_SPLIT_ROLES):
@@ -1849,10 +2369,11 @@ def fig_block_transition_performance_by_trial_type(
                     mouse_sem=("mean_mouse_correct", "sem"),
                     model_mean=("mean_model_probability_correct", "mean"),
                     model_sem=("mean_model_probability_correct", "sem"),
-                ).sort_index()
-                n_windows = int(panel["window_id"].nunique())
-                if trajectory.empty:
-                    ax.text(0.5, 0.5, "No matched windows", ha="center", va="center", transform=ax.transAxes)
+                ).reindex(_FIGURE19_RELATIVE_POSITIONS)
+                windows_per_position = panel.groupby("relative_position")["window_id"].nunique()
+                n_label = _window_count_range_label(windows_per_position, "available")
+                if panel.empty:
+                    ax.text(0.5, 0.5, "No available windows", ha="center", va="center", transform=ax.transAxes)
                 else:
                     ax.plot(
                         trajectory.index, trajectory["mouse_mean"], color="black", marker="o",
@@ -1860,8 +2381,8 @@ def fig_block_transition_performance_by_trial_type(
                     )
                     ax.fill_between(
                         trajectory.index,
-                        trajectory["mouse_mean"] - trajectory["mouse_sem"].fillna(0),
-                        trajectory["mouse_mean"] + trajectory["mouse_sem"].fillna(0),
+                        trajectory["mouse_mean"] - trajectory["mouse_sem"],
+                        trajectory["mouse_mean"] + trajectory["mouse_sem"],
                         color="black", alpha=0.12,
                     )
                     ax.plot(
@@ -1870,32 +2391,461 @@ def fig_block_transition_performance_by_trial_type(
                     )
                     ax.fill_between(
                         trajectory.index,
-                        trajectory["model_mean"] - trajectory["model_sem"].fillna(0),
-                        trajectory["model_mean"] + trajectory["model_sem"].fillna(0),
+                        trajectory["model_mean"] - trajectory["model_sem"],
+                        trajectory["model_mean"] + trajectory["model_sem"],
                         color=MODEL_COLORS[model_id], alpha=0.18,
                     )
                 ax.axvline(0, color="0.5", linewidth=0.8, linestyle="--", zorder=1)
                 if row_index == 0:
-                    ax.set_title(f"{col_title}\nN={n_windows} matched windows", fontsize=10)
+                    ax.set_title(f"{col_title}\n{n_label}", fontsize=10)
                 else:
-                    ax.set_title(f"N={n_windows} matched windows", fontsize=9)
+                    ax.set_title(n_label, fontsize=9)
                 if col_index == 0:
                     ax.set_ylabel(f"{EVENT_ALIGNED_SPLIT_LABELS[split_role]}\nP(correct)", fontsize=9)
                 if row_index == n_rows - 1:
                     ax.set_xlabel("Relative trial position", fontsize=10)
+                ax.set_xlim(
+                    BLOCK_TRANSITION_PERFORMANCE_RELATIVE_RANGE.start,
+                    BLOCK_TRANSITION_PERFORMANCE_RELATIVE_RANGE.stop - 1,
+                )
                 ax.tick_params(labelsize=8.5)
-        axes[0, 0].legend(loc="best", fontsize=8)
+        handles, labels = axes[0, 0].get_legend_handles_labels()
+        if handles:
+            axes[0, 0].legend(handles, labels, loc="best", fontsize=8)
         fig.suptitle(
             f"Block-transition performance by trial type -- {mouse_id} -- {MODEL_LABELS[model_id]}\n"
-            "±10 trials around each block transition, restricted to that column's own trial type "
+            "Trials -15 through +20 around each block transition, restricted to that column's own trial type "
             "(short/long stimulus) at each relative position. Rows: all sessions pooled, then "
             "train/validation/test only. Mouse (black) vs model expected accuracy (color), aggregated "
-            "within window first, then averaged across matched windows. Panel y-scales are not fixed.",
+            "within window first, then averaged across that model's available windows. N may vary by "
+            "position because trial types are sparse. Panel y-scales are not fixed.",
             fontsize=11.5,
         )
         fig.tight_layout(rect=[0, 0, 1, 0.94])
         pages.append(fig)
+
+    overlay_fig, overlay_axes = plt.subplots(n_rows, n_cols, figsize=(20.0, 16.0))
+    for row_index, split_role in enumerate(EVENT_ALIGNED_SPLIT_ROLES):
+        for col_index, (event_category, trial_type, col_title) in enumerate(
+            BLOCK_TRANSITION_PERFORMANCE_COLUMNS,
+        ):
+            ax = overlay_axes[row_index, col_index]
+            summary = overlay_summaries[(split_role, event_category, trial_type)]
+            n_by_position = (
+                summary.loc[summary["series_id"] == "Mouse"]
+                .set_index("relative_position")["n_windows"]
+            )
+            n_label = _window_count_range_label(n_by_position, "matched")
+            if summary.empty:
+                ax.text(0.5, 0.5, "No matched windows", ha="center", va="center", transform=ax.transAxes)
+            else:
+                for series_id in ("Mouse", *MODEL_ORDER):
+                    trajectory = (
+                        summary.loc[summary["series_id"] == series_id]
+                        .set_index("relative_position")
+                        .reindex(_FIGURE19_RELATIVE_POSITIONS)
+                    )
+                    is_mouse = series_id == "Mouse"
+                    color = "black" if is_mouse else MODEL_COLORS[series_id]
+                    ax.plot(
+                        trajectory.index, trajectory["mean"],
+                        color=color,
+                        linestyle="-" if is_mouse else MODEL_LINESTYLES[series_id],
+                        marker="o" if is_mouse else MODEL_MARKERS[series_id],
+                        markevery=3, markersize=3 if is_mouse else 2.5,
+                        linewidth=1.8 if is_mouse else 1.25,
+                        label="Mouse" if is_mouse else MODEL_LABELS[series_id],
+                        zorder=4 if is_mouse else 2,
+                    )
+                    ax.fill_between(
+                        trajectory.index,
+                        trajectory["mean"] - trajectory["sem"],
+                        trajectory["mean"] + trajectory["sem"],
+                        color=color, alpha=0.10 if is_mouse else 0.06,
+                        zorder=3 if is_mouse else 1,
+                    )
+            ax.axvline(0, color="0.5", linewidth=0.8, linestyle="--", zorder=1)
+            if row_index == 0:
+                ax.set_title(f"{col_title}\n{n_label}", fontsize=10)
+            else:
+                ax.set_title(n_label, fontsize=9)
+            if col_index == 0:
+                ax.set_ylabel(f"{EVENT_ALIGNED_SPLIT_LABELS[split_role]}\nP(correct)", fontsize=9)
+            if row_index == n_rows - 1:
+                ax.set_xlabel("Relative trial position", fontsize=10)
+            ax.set_xlim(
+                BLOCK_TRANSITION_PERFORMANCE_RELATIVE_RANGE.start,
+                BLOCK_TRANSITION_PERFORMANCE_RELATIVE_RANGE.stop - 1,
+            )
+            ax.tick_params(labelsize=8.5)
+    handles, labels = overlay_axes[0, 0].get_legend_handles_labels()
+    if handles:
+        overlay_fig.legend(
+            handles, labels, loc="upper center", ncol=len(handles),
+            bbox_to_anchor=(0.5, 0.955), fontsize=8.5,
+        )
+    overlay_fig.suptitle(
+        f"Block-transition performance by trial type -- {mouse_id} -- all models\n"
+        "Trials -15 through +20 around each block transition. Mouse and model curves use the same "
+        "all-model matched windows at each relative position; N can vary by position. Rows: all "
+        "sessions pooled, then train/validation/test only. Panel y-scales are not fixed.",
+        fontsize=11.5,
+    )
+    overlay_fig.tight_layout(rect=[0, 0, 1, 0.91])
+    pages.append(overlay_fig)
     _save_pdf_pages(pages, figures_dir, "fig19_sliding_window_block_transition_performance_by_trial_type")
+
+
+_FIGURE23_RELATIVE_POSITIONS = pd.Index(
+    tuple(RARE_TRIAL_RELATIVE_RANGE), name="relative_position",
+)
+
+
+def fig_rare_trial_performance_by_type(
+    rare_trial_performance: pd.DataFrame, mouse_id: str, figures_dir,
+) -> None:
+    """Figure 23: mirrors Figure 19's page/row structure -- one page per
+    model plus an all-model overlay (6 pages; PDF only, no PNGs), rows =
+    ``EVENT_ALIGNED_SPLIT_ROLES`` -- but aligned on the rare trial itself
+    (trials -2..+2 around it, ``RARE_TRIAL_RELATIVE_RANGE``) rather than a
+    block transition, and with 2 columns (``RARE_TRIAL_PERFORMANCE_COLUMNS``)
+    instead of Figure 19's 4: a rare-trial event's own stimulus category is
+    already fixed by its event_category (rare short in a long block, rare
+    long in a short block), so there is no separate trial_type split.
+
+    Aggregated within window first (one number per window regardless of how
+    many rare trials it contains -- see
+    ``collect._aggregate_rare_trial_performance``), then averaged across
+    whatever matched windows have data at each relative position. Panel
+    y-axes are left to auto-scale (not fixed to 0-1).
+    """
+    n_rows, n_cols = len(EVENT_ALIGNED_SPLIT_ROLES), len(RARE_TRIAL_PERFORMANCE_COLUMNS)
+    overlay_summaries = {}
+    for split_role in EVENT_ALIGNED_SPLIT_ROLES:
+        for event_category, _ in RARE_TRIAL_PERFORMANCE_COLUMNS:
+            panel = rare_trial_performance[
+                (rare_trial_performance["split_role"] == split_role)
+                & (rare_trial_performance["event_category"] == event_category)
+            ]
+            overlay_summaries[(split_role, event_category)] = (
+                _matched_block_transition_overlay_summary(panel, label="Figure 23")
+            )
+
+    pages = []
+    for model_id in MODEL_ORDER:
+        fig, axes = plt.subplots(n_rows, n_cols, figsize=(11.0, 16.0))
+        for row_index, split_role in enumerate(EVENT_ALIGNED_SPLIT_ROLES):
+            for col_index, (event_category, col_title) in enumerate(RARE_TRIAL_PERFORMANCE_COLUMNS):
+                ax = axes[row_index, col_index]
+                panel = rare_trial_performance[
+                    (rare_trial_performance["model_id"] == model_id)
+                    & (rare_trial_performance["split_role"] == split_role)
+                    & (rare_trial_performance["event_category"] == event_category)
+                ]
+                trajectory = panel.groupby("relative_position").agg(
+                    mouse_mean=("mean_mouse_correct", "mean"),
+                    mouse_sem=("mean_mouse_correct", "sem"),
+                    model_mean=("mean_model_probability_correct", "mean"),
+                    model_sem=("mean_model_probability_correct", "sem"),
+                ).reindex(_FIGURE23_RELATIVE_POSITIONS)
+                windows_per_position = panel.groupby("relative_position")["window_id"].nunique()
+                n_label = _window_count_range_label(
+                    windows_per_position, "available", positions=_FIGURE23_RELATIVE_POSITIONS,
+                )
+                if panel.empty:
+                    ax.text(0.5, 0.5, "No available windows", ha="center", va="center", transform=ax.transAxes)
+                else:
+                    ax.plot(
+                        trajectory.index, trajectory["mouse_mean"], color="black", marker="o",
+                        markersize=3, linewidth=1.4, label="Mouse",
+                    )
+                    ax.fill_between(
+                        trajectory.index,
+                        trajectory["mouse_mean"] - trajectory["mouse_sem"],
+                        trajectory["mouse_mean"] + trajectory["mouse_sem"],
+                        color="black", alpha=0.12,
+                    )
+                    ax.plot(
+                        trajectory.index, trajectory["model_mean"], color=MODEL_COLORS[model_id],
+                        marker="o", markersize=3, linewidth=1.4, label=MODEL_LABELS[model_id],
+                    )
+                    ax.fill_between(
+                        trajectory.index,
+                        trajectory["model_mean"] - trajectory["model_sem"],
+                        trajectory["model_mean"] + trajectory["model_sem"],
+                        color=MODEL_COLORS[model_id], alpha=0.18,
+                    )
+                ax.axvline(0, color="0.5", linewidth=0.8, linestyle="--", zorder=1)
+                if row_index == 0:
+                    ax.set_title(f"{col_title}\n{n_label}", fontsize=10)
+                else:
+                    ax.set_title(n_label, fontsize=9)
+                if col_index == 0:
+                    ax.set_ylabel(f"{EVENT_ALIGNED_SPLIT_LABELS[split_role]}\nP(correct)", fontsize=9)
+                if row_index == n_rows - 1:
+                    ax.set_xlabel("Relative trial position", fontsize=10)
+                ax.set_xlim(RARE_TRIAL_RELATIVE_RANGE.start, RARE_TRIAL_RELATIVE_RANGE.stop - 1)
+                ax.set_xticks(list(RARE_TRIAL_RELATIVE_RANGE))
+                ax.tick_params(labelsize=8.5)
+        handles, labels = axes[0, 0].get_legend_handles_labels()
+        if handles:
+            axes[0, 0].legend(handles, labels, loc="best", fontsize=8)
+        fig.suptitle(
+            f"Rare-trial performance -- {mouse_id} -- {MODEL_LABELS[model_id]}\n"
+            "Trials -2 through +2 around each rare trial (trial 0 = the rare trial itself). Rows: all "
+            "sessions pooled, then train/validation/test only. Mouse (black) vs model expected accuracy "
+            "(color), aggregated within window first, then averaged across that model's available "
+            "windows. Panel y-scales are not fixed.",
+            fontsize=11.5,
+        )
+        fig.tight_layout(rect=[0, 0, 1, 0.92])
+        pages.append(fig)
+
+    overlay_fig, overlay_axes = plt.subplots(n_rows, n_cols, figsize=(11.0, 16.0))
+    for row_index, split_role in enumerate(EVENT_ALIGNED_SPLIT_ROLES):
+        for col_index, (event_category, col_title) in enumerate(RARE_TRIAL_PERFORMANCE_COLUMNS):
+            ax = overlay_axes[row_index, col_index]
+            summary = overlay_summaries[(split_role, event_category)]
+            n_by_position = (
+                summary.loc[summary["series_id"] == "Mouse"]
+                .set_index("relative_position")["n_windows"]
+            )
+            n_label = _window_count_range_label(
+                n_by_position, "matched", positions=_FIGURE23_RELATIVE_POSITIONS,
+            )
+            if summary.empty:
+                ax.text(0.5, 0.5, "No matched windows", ha="center", va="center", transform=ax.transAxes)
+            else:
+                for series_id in ("Mouse", *MODEL_ORDER):
+                    trajectory = (
+                        summary.loc[summary["series_id"] == series_id]
+                        .set_index("relative_position")
+                        .reindex(_FIGURE23_RELATIVE_POSITIONS)
+                    )
+                    is_mouse = series_id == "Mouse"
+                    color = "black" if is_mouse else MODEL_COLORS[series_id]
+                    ax.plot(
+                        trajectory.index, trajectory["mean"],
+                        color=color,
+                        linestyle="-" if is_mouse else MODEL_LINESTYLES[series_id],
+                        marker="o" if is_mouse else MODEL_MARKERS[series_id],
+                        markersize=3 if is_mouse else 2.5,
+                        linewidth=1.8 if is_mouse else 1.25,
+                        label="Mouse" if is_mouse else MODEL_LABELS[series_id],
+                        zorder=4 if is_mouse else 2,
+                    )
+                    ax.fill_between(
+                        trajectory.index,
+                        trajectory["mean"] - trajectory["sem"],
+                        trajectory["mean"] + trajectory["sem"],
+                        color=color, alpha=0.10 if is_mouse else 0.06,
+                        zorder=3 if is_mouse else 1,
+                    )
+            ax.axvline(0, color="0.5", linewidth=0.8, linestyle="--", zorder=1)
+            if row_index == 0:
+                ax.set_title(f"{col_title}\n{n_label}", fontsize=10)
+            else:
+                ax.set_title(n_label, fontsize=9)
+            if col_index == 0:
+                ax.set_ylabel(f"{EVENT_ALIGNED_SPLIT_LABELS[split_role]}\nP(correct)", fontsize=9)
+            if row_index == n_rows - 1:
+                ax.set_xlabel("Relative trial position", fontsize=10)
+            ax.set_xlim(RARE_TRIAL_RELATIVE_RANGE.start, RARE_TRIAL_RELATIVE_RANGE.stop - 1)
+            ax.set_xticks(list(RARE_TRIAL_RELATIVE_RANGE))
+            ax.tick_params(labelsize=8.5)
+    handles, labels = overlay_axes[0, 0].get_legend_handles_labels()
+    if handles:
+        overlay_fig.legend(
+            handles, labels, loc="upper center", ncol=len(handles),
+            bbox_to_anchor=(0.5, 0.955), fontsize=8.5,
+        )
+    overlay_fig.suptitle(
+        f"Rare-trial performance -- {mouse_id} -- all models\n"
+        "Trials -2 through +2 around each rare trial. Mouse and model curves use the same all-model "
+        "matched windows at each relative position. Rows: all sessions pooled, then "
+        "train/validation/test only. Panel y-scales are not fixed.",
+        fontsize=11.5,
+    )
+    overlay_fig.tight_layout(rect=[0, 0, 1, 0.91])
+    pages.append(overlay_fig)
+    _save_pdf_pages(pages, figures_dir, "fig23_sliding_window_rare_trial_performance_by_type")
+
+
+_CAUSAL_TRAJECTORY_SPLIT_ROLES = ("train", "validation", "test")
+_CAUSAL_TRAJECTORY_SPLIT_LABELS = {"train": "Train", "validation": "Validation", "test": "Test"}
+_CAUSAL_TRAJECTORY_SAMPLES_PER_SPLIT = 5
+# Pale, model-color-independent shades for the ground-truth block schedule
+# (kept far from MODEL_COLORS so the shading never reads as a model line).
+_CAUSAL_TRAJECTORY_BLOCK_COLORS = {"N": "#BFBFBF", "S": "#F4A6A6", "L": "#A6C8F4"}
+_CAUSAL_TRAJECTORY_BLOCK_LABELS = {
+    "N": "Neutral block (true)", "S": "Short block (true)", "L": "Long block (true)",
+}
+
+
+def _shade_true_blocks(ax: plt.Axes, trial_index: pd.Series, true_block: pd.Series) -> None:
+    """Shade contiguous runs of the ground-truth block label behind the
+    prior trajectory, so the panel shows at a glance whether the model's
+    prior tracks the true block schedule."""
+    order = np.argsort(trial_index.to_numpy())
+    trial_sorted = trial_index.to_numpy()[order]
+    block_sorted = true_block.to_numpy()[order]
+    if len(block_sorted) == 0:
+        return
+    run_id = np.r_[0, np.cumsum(block_sorted[1:] != block_sorted[:-1])]
+    for run in np.unique(run_id):
+        mask = run_id == run
+        color = _CAUSAL_TRAJECTORY_BLOCK_COLORS.get(block_sorted[mask][0], "#FFFFFF")
+        ax.axvspan(
+            trial_sorted[mask].min() - 0.5, trial_sorted[mask].max() + 0.5,
+            color=color, alpha=0.4, linewidth=0, zorder=0,
+        )
+
+
+def _causal_trajectory_session_label(trajectory: pd.DataFrame) -> str:
+    return str(trajectory["session_id"].iloc[0]).split("_")[-1]
+
+
+def fig_prior_trajectory_samples(samples: pd.DataFrame, mouse_id: str, figures_dir) -> None:
+    """5 pages: one per model (M1-M4), then a final cross-model overlay page.
+
+    Each page is a 5-sample x train/validation/test grid of the long-block
+    prior (``model_prior_long``) over trials for a fixed random sample of
+    sessions (see ``collect.collect_prior_trajectory_samples``) -- the SAME
+    5 sessions per split on every page -- with the true block schedule
+    shaded behind each trajectory. This is the same first-row panel as e.g.
+    ``m2_dynamic_block_length_causal_trajectory``, replicated across sampled
+    sessions and split roles, with ground-truth shading added; the last page
+    superimposes all four models' priors on those same sessions. M0 has no
+    block prior and is excluded.
+    """
+    n_rows = _CAUSAL_TRAJECTORY_SAMPLES_PER_SPLIT
+    n_cols = len(_CAUSAL_TRAJECTORY_SPLIT_ROLES)
+    block_legend_handles = [
+        Patch(facecolor=color, alpha=0.4, edgecolor="none", label=_CAUSAL_TRAJECTORY_BLOCK_LABELS[key])
+        for key, color in _CAUSAL_TRAJECTORY_BLOCK_COLORS.items()
+    ]
+
+    pages = []
+    for model_id in ("M1", "M2", "M3", "M4"):
+        model_samples = samples.loc[samples["model_id"] == model_id]
+        fig, axes = plt.subplots(n_rows, n_cols, figsize=(16.0, 13.0), sharey=True)
+        for col_index, split_role in enumerate(_CAUSAL_TRAJECTORY_SPLIT_ROLES):
+            split_samples = model_samples.loc[model_samples["split_role"] == split_role]
+            sample_ranks = sorted(split_samples["sample_rank"].unique())
+            for row_index in range(n_rows):
+                ax = axes[row_index, col_index]
+                if row_index >= len(sample_ranks):
+                    ax.axis("off")
+                    continue
+                trajectory = split_samples.loc[
+                    split_samples["sample_rank"] == sample_ranks[row_index]
+                ].sort_values("trial_index")
+                _shade_true_blocks(ax, trajectory["trial_index"], trajectory["true_block"])
+                ax.plot(
+                    trajectory["trial_index"], trajectory["model_prior_long"],
+                    color=MODEL_COLORS[model_id], linewidth=1.5, zorder=3,
+                )
+                window_id = trajectory["window_id"].iloc[0]
+                panel_title = f"{_causal_trajectory_session_label(trajectory)} (win {int(window_id)})"
+                if row_index == 0:
+                    ax.set_title(
+                        f"{_CAUSAL_TRAJECTORY_SPLIT_LABELS[split_role]}\n{panel_title}", fontsize=10,
+                    )
+                else:
+                    ax.set_title(panel_title, fontsize=8.5)
+                ax.set_ylim(0, 1)
+                ax.set_xlim(trajectory["trial_index"].min(), trajectory["trial_index"].max())
+                ax.tick_params(labelsize=7.5)
+                if row_index == n_rows - 1:
+                    ax.set_xlabel("Trial index", fontsize=9)
+                if col_index == 0:
+                    ax.set_ylabel(f"Sample {row_index + 1}\nP(long) prior", fontsize=9)
+        fig.legend(
+            handles=block_legend_handles, loc="upper center", ncol=len(block_legend_handles),
+            bbox_to_anchor=(0.5, 0.965), fontsize=9, frameon=False,
+        )
+        fig.suptitle(
+            f"Long-block prior causal trajectory -- {mouse_id} -- {MODEL_LABELS[model_id]}\n"
+            "5 random sessions per split (seeded, reproducible; the same sessions on every fig20 page), "
+            "each paired with this model's own randomly chosen fitted rolling window (train/validation "
+            "sessions recur across windows; test has exactly one window per session). Line: model's "
+            "P(long) prior before each trial. Shading: ground-truth block type.",
+            fontsize=11, y=1.0,
+        )
+        fig.tight_layout(rect=[0, 0, 1, 0.88])
+        pages.append(fig)
+
+    # Final page: the same sampled sessions with all four models superimposed
+    # (each still from its own randomly chosen fitted window for that session).
+    reference_model = "M1"
+    model_legend_handles = [
+        Line2D([0], [0], color=MODEL_COLORS[m], linewidth=1.8, label=MODEL_LABELS[m])
+        for m in ("M1", "M2", "M3", "M4")
+    ]
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(16.0, 13.0), sharey=True)
+    for col_index, split_role in enumerate(_CAUSAL_TRAJECTORY_SPLIT_ROLES):
+        split_samples = samples.loc[samples["split_role"] == split_role]
+        sample_ranks = sorted(split_samples["sample_rank"].unique())
+        for row_index in range(n_rows):
+            ax = axes[row_index, col_index]
+            if row_index >= len(sample_ranks):
+                ax.axis("off")
+                continue
+            rank_samples = split_samples.loc[split_samples["sample_rank"] == sample_ranks[row_index]]
+            reference = rank_samples.loc[rank_samples["model_id"] == reference_model].sort_values("trial_index")
+            _shade_true_blocks(ax, reference["trial_index"], reference["true_block"])
+            for model_id in ("M1", "M2", "M3", "M4"):
+                trajectory = rank_samples.loc[rank_samples["model_id"] == model_id].sort_values("trial_index")
+                ax.plot(
+                    trajectory["trial_index"], trajectory["model_prior_long"],
+                    color=MODEL_COLORS[model_id], linewidth=1.3, zorder=3,
+                )
+            session_label = _causal_trajectory_session_label(reference)
+            if row_index == 0:
+                ax.set_title(f"{_CAUSAL_TRAJECTORY_SPLIT_LABELS[split_role]}\n{session_label}", fontsize=10)
+            else:
+                ax.set_title(session_label, fontsize=8.5)
+            ax.set_ylim(0, 1)
+            ax.set_xlim(reference["trial_index"].min(), reference["trial_index"].max())
+            ax.tick_params(labelsize=7.5)
+            if row_index == n_rows - 1:
+                ax.set_xlabel("Trial index", fontsize=9)
+            if col_index == 0:
+                ax.set_ylabel(f"Sample {row_index + 1}\nP(long) prior", fontsize=9)
+    fig.legend(
+        handles=block_legend_handles + model_legend_handles,
+        loc="upper center", ncol=len(block_legend_handles) + len(model_legend_handles),
+        bbox_to_anchor=(0.5, 0.965), fontsize=9, frameon=False,
+    )
+    fig.suptitle(
+        f"Long-block prior causal trajectory -- {mouse_id} -- all models superimposed\n"
+        "Same 5 random sessions per split as the per-model pages, each model plotted from its own "
+        "randomly chosen fitted rolling window for that session. Shading: ground-truth block type.",
+        fontsize=11, y=1.0,
+    )
+    fig.tight_layout(rect=[0, 0, 1, 0.88])
+    pages.append(fig)
+
+    _save_pdf_pages(pages, figures_dir, "fig20_sliding_window_long_block_prior_causal_trajectory_samples")
+
+
+def fig_m4_hazard_curves_across_windows(sw_params: pd.DataFrame, mouse_id: str, figures_dir) -> None:
+    """M4's fitted biased hazard hB(r) for every rolling window, overlaid in
+    chronological order from a pale tint (earliest window) to a dark shade
+    (latest) of M4's report color -- shows how the fitted run-length
+    dependence of the switch hazard drifts across the sliding-window fits.
+    No neutral hazard, no r=23 reference line (see fig09's bh row for the
+    excess-hazard summary and the bh_half_life row for the r=0.5 crossing).
+    Shares its plotting logic with fig09's bh_hazard_curves row via
+    ``_plot_m4_hazard_curve_family`` so the two can't drift apart.
+    """
+    fig, ax = plt.subplots(figsize=(8.5, 6.2))
+    _plot_m4_hazard_curve_family(ax, sw_params, colorbar=True)
+    ax.set_xlabel("Represented run length r (trials)")
+    ax.set_ylabel("Biased switch hazard hB(r)")
+    ax.set_title(f"M4 fitted hazard curve across sliding windows -- {mouse_id}", fontsize=12)
+    fig.tight_layout()
+    _save(fig, figures_dir, "fig22_sliding_window_m4_hazard_curves_across_windows")
 
 
 @dataclass(frozen=True)
@@ -1920,7 +2870,9 @@ _FIGURE_SPECS = (
     FigureSpec(
         "fig02", "Sliding-window NLL trajectory",
         lambda table, mouse, output: fig_window_nll_trajectory(
-            table("sliding_window_split_session_metrics.csv"), output,
+            table("sliding_window_split_session_metrics.csv"),
+            table("sliding_window_trial_subset_metrics.csv"),
+            output,
         ),
     ),
     FigureSpec(
@@ -2031,9 +2983,33 @@ _FIGURE_SPECS = (
         ),
     ),
     FigureSpec(
-        "fig19", "Block-transition performance by trial type (5 pages, PDF only)",
+        "fig19", "Block-transition performance by trial type (6 pages, PDF only)",
         lambda table, mouse, output: fig_block_transition_performance_by_trial_type(
             table("sliding_window_block_transition_performance.csv"), mouse, output,
+        ),
+    ),
+    FigureSpec(
+        "fig20", "Long-block prior causal trajectory samples, M1-M4 + overlay (5 pages, PDF only)",
+        lambda table, mouse, output: fig_prior_trajectory_samples(
+            table("sliding_window_prior_trajectory_samples.csv"), mouse, output,
+        ),
+    ),
+    FigureSpec(
+        "fig21", "Sliding-window parameter means and standard deviations",
+        lambda table, mouse, output: fig_sliding_window_parameter_mean_sd(
+            table("sliding_window_parameters.csv"), mouse, output,
+        ),
+    ),
+    FigureSpec(
+        "fig22", "M4 fitted hazard curve across sliding windows (dim-to-dark)",
+        lambda table, mouse, output: fig_m4_hazard_curves_across_windows(
+            table("sliding_window_parameters.csv"), mouse, output,
+        ),
+    ),
+    FigureSpec(
+        "fig23", "Rare-trial performance by type (6 pages, PDF only)",
+        lambda table, mouse, output: fig_rare_trial_performance_by_type(
+            table("sliding_window_rare_trial_performance.csv"), mouse, output,
         ),
     ),
 )
@@ -2080,9 +3056,10 @@ def normalize_figure_selectors(
             selected.add(figure_id)
     if invalid:
         valid = ", ".join(_FIGURE_BY_ID)
+        highest_figure_number = max(int(figure_id[3:]) for figure_id in _FIGURE_BY_ID)
         raise ValueError(
             f"Unknown figure selector(s): {', '.join(invalid)}. "
-            f"Use one of {valid}, a number from 1 to 19, or 'all'."
+            f"Use one of {valid}, a number from 1 to {highest_figure_number}, or 'all'."
         )
     return tuple(spec.figure_id for spec in _FIGURE_SPECS if spec.figure_id in selected)
 
@@ -2133,7 +3110,7 @@ def main() -> None:
         "--figure", dest="figures", action="append", metavar="ID",
         help=(
             "Figure to render (repeatable): 3, 03, fig03, or all. "
-            "Omit to render all 17 figures."
+            "Omit to render all figures."
         ),
     )
     parser.add_argument(

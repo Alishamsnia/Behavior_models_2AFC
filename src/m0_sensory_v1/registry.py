@@ -16,9 +16,10 @@ from .data.task_moments import TaskMoments
 from .model.bayesian import (
     category_variances,
     log_odds_coefficients,
-    positive_decision_threshold,
+    sensory_standard_deviation,
 )
 from .model.initialization import InitializationSpec, validate_initialization_table
+from .model.m1_bayesian import integrate_general_decision_region
 from .model.parameters import decode_raw_parameters
 
 
@@ -191,8 +192,7 @@ def load_model_registry(path: str | Path | None = None) -> ModelRegistry:
 
        w>0,\quad s_0>0,\quad 0<\ell_short<1,\quad 0<ell_long<1,
 
-    verifies every start decodes and yields the registered unique positive
-    decision threshold under :math:`\pi=0.5`, and checks the 70/15/15 split.
+    verifies every start decodes and yields valid full-region probabilities under :math:`\pi=0.5`, and checks the 70/15/15 split.
 
     Parameter interpretation
     ------------------------
@@ -218,7 +218,7 @@ def load_model_registry(path: str | Path | None = None) -> ModelRegistry:
     Numerical stability
     -------------------
     Every initialization must map to finite ``torch.float64`` raw coordinates
-    and a finite positive threshold using real task moments.
+    and finite full-region probabilities using real task moments.
 
     Causal restrictions
     -------------------
@@ -271,8 +271,12 @@ def load_model_registry(path: str | Path | None = None) -> ModelRegistry:
         raise ValueError("Supported objective weightings disagree with M0")
     if config.get("session_policy") != "independent_no_state":
         raise ValueError("M0 sessions must use the independent no-state policy")
-    if config.get("positive_root_only") is not True:
-        raise ValueError("M0 registry must enable the positive-root-only rule")
+    if config.get("positive_root_only") is not False:
+        raise ValueError("M0 registry must use the full quadratic decision region")
+    if config.get("decision_rule") != "long if posterior_log_odds > 0":
+        raise ValueError("M0 decision rule must use the full posterior-log-odds region")
+    if config.get("negative_root_policy") != "integrate_all_real_measurement_regions":
+        raise ValueError("M0 must integrate all real measurement regions")
     for tolerance_name in (
         "epsilon",
         "quadratic_tolerance",
@@ -417,13 +421,15 @@ def load_model_registry(path: str | Path | None = None) -> ModelRegistry:
             coefficients = log_odds_coefficients(
                 variances, task_moments, prior, parameters.log_kappa
             )
-            threshold = positive_decision_threshold(
-                coefficients,
+            duration = parameters.w.new_tensor([task_moments.mu_short_s, task_moments.mu_long_s])
+            probability, _ = integrate_general_decision_region(
+                duration, sensory_standard_deviation(duration, parameters), coefficients,
                 quadratic_tolerance=float(config["quadratic_tolerance"]),
                 discriminant_tolerance=float(config["discriminant_tolerance"]),
             )
-            if not bool(torch.isfinite(threshold) & (threshold > 0.0)):
-                raise ValueError(f"Initialization {start.start_id} has invalid threshold")
+            if not bool(torch.all(torch.isfinite(probability) & (probability >= 0) & (probability <= 1))):
+                raise ValueError(f"Initialization {start.start_id} has invalid full-region probability")
+
 
     seed_config = config["random_seeds"]
     metrics_config = config["metrics"]

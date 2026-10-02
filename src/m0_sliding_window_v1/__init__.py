@@ -23,6 +23,7 @@ from .experiment import (
     match_window_winners_to_test_sessions,
     partition_final_two_blocks,
     partition_session_blocks,
+    prepare_full_session_matched_data,
     prepare_sliding_data,
     prediction_performance,
 )
@@ -46,6 +47,7 @@ __all__ = [
     "match_window_winners_to_test_sessions",
     "partition_final_two_blocks",
     "partition_session_blocks",
+    "prepare_full_session_matched_data",
     "prepare_sliding_data",
     "prediction_performance",
     "pool_prediction_tables",

@@ -1,0 +1,95 @@
+{
+  "model_id": "M1_known_switch_v1",
+  "table_version": "m0_directional_lapse_kappa_eight_starts_v3_reused_verbatim_for_m1_known_switch",
+  "frozen": true,
+  "generation_policy": "identical_to_m0_starts_because_no_hazard_is_fitted",
+  "parameter_order": [
+    "w",
+    "s0",
+    "ell_short",
+    "ell_long",
+    "kappa"
+  ],
+  "duration_unit": "seconds",
+  "lapse_max": 1.0,
+  "m0_source": {
+    "file": "config/initializations/m0_sensory_v1_starts_ell100.json",
+    "table_version": "m0_directional_lapse_kappa_eight_starts_v3",
+    "sha256": "72cfa67383c52e261adab9d20feb441b31e4367ff3746a7de132c69e4b385480"
+  },
+  "note": "M1_known_switch_v1 has no fitted hazard: switch timing is supplied exactly, so its free parameter vector is identical in shape and meaning to M0. These are M0's own registered eight starts, reused verbatim rather than re-derived.",
+  "starts": [
+    {
+      "start_id": 1,
+      "w": 0.0271,
+      "s0": 0.555,
+      "ell_short": 0.03,
+      "ell_long": 0.03,
+      "kappa": 1.0,
+      "purpose": "Symmetric reference lapse"
+    },
+    {
+      "start_id": 2,
+      "w": 0.005,
+      "s0": 0.7,
+      "ell_short": 0.135,
+      "ell_long": 0.015,
+      "kappa": 0.5,
+      "purpose": "Low scaling noise with higher short-category lapse"
+    },
+    {
+      "start_id": 3,
+      "w": 0.01,
+      "s0": 1.2,
+      "ell_short": 0.0105,
+      "ell_long": 0.0195,
+      "kappa": 2.0,
+      "purpose": "Low scaling noise, high baseline noise, low asymmetric lapse"
+    },
+    {
+      "start_id": 4,
+      "w": 0.02,
+      "s0": 0.25,
+      "ell_short": 0.224,
+      "ell_long": 0.056,
+      "kappa": 0.75,
+      "purpose": "Low baseline noise with high short-category lapse"
+    },
+    {
+      "start_id": 5,
+      "w": 0.04,
+      "s0": 0.9,
+      "ell_short": 0.002,
+      "ell_long": 0.008,
+      "kappa": 1.3333333333333333,
+      "purpose": "Higher sensory noise with near-zero category-specific lapses"
+    },
+    {
+      "start_id": 6,
+      "w": 0.07,
+      "s0": 0.15,
+      "ell_short": 0.13,
+      "ell_long": 0.07,
+      "kappa": 0.9,
+      "purpose": "Low baseline noise with moderate short-category lapse"
+    },
+    {
+      "start_id": 7,
+      "w": 0.12,
+      "s0": 0.45,
+      "ell_short": 0.036,
+      "ell_long": 0.324,
+      "kappa": 1.1111111111111112,
+      "purpose": "High scaling noise with high long-category lapse"
+    },
+    {
+      "start_id": 8,
+      "w": 0.2,
+      "s0": 0.35,
+      "ell_short": 0.098,
+      "ell_long": 0.002,
+      "kappa": 1.0,
+      "purpose": "Very high scaling noise with short-category lapse and near-zero long lapse"
+    }
+  ]
+}

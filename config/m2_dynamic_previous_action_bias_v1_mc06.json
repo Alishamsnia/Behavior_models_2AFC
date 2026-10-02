@@ -1,0 +1,7 @@
+{
+  "extends": "m2_dynamic_previous_action_bias_v1.json",
+  "source_m2_dynamic_block_length_registry": {
+    "file": "config/m2_dynamic_block_length_v1_mc06.json",
+    "sha256": "e3227c5b4c897bdbdedf5c777f224bf61216b71e67569e4ee4a698b41cdee8b7"
+  }
+}

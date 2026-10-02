@@ -65,7 +65,7 @@ class PartTenMandatoryTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "upper"):
             solve_positive_decision_region(quadratic_lower)
 
-    def test_analytical_upper_tail_matches_numerical_quadrature(self) -> None:
+    def test_analytical_full_region_matches_numerical_quadrature(self) -> None:
         raw = self.registry.initializations[0].raw_tensor()
         durations = torch.tensor([0.2, 0.5, 0.8, 1.7, 2.0, 2.3], dtype=torch.float64)
         choices = torch.zeros_like(durations)
@@ -80,19 +80,21 @@ class PartTenMandatoryTests(unittest.TestCase):
         ell_short = self.registry.initializations[0].ell_short
         ell_long = self.registry.initializations[0].ell_long
         numerical: list[float] = []
-        for duration, category, threshold, sd in zip(
+        for duration, category, lower, upper, sd in zip(
             durations.numpy(),
             categories.numpy(),
-            prediction.positive_threshold_s.numpy(),
+            prediction.decision_lower_boundary_s.numpy(),
+            prediction.decision_upper_boundary_s.numpy(),
             prediction.sensory_sd_s.numpy(),
             strict=True,
         ):
             density = lambda x: np.exp(-0.5 * ((x - duration) / sd) ** 2) / (
                 sd * np.sqrt(2.0 * np.pi)
             )
-            upper_tail = quad(density, threshold, np.inf, epsabs=1e-12)[0]
+            full_region = (quad(density, -np.inf, lower, epsabs=1e-12)[0]
+                           + quad(density, upper, np.inf, epsabs=1e-12)[0])
             lapse_rate = ell_long if category == 1.0 else ell_short
-            numerical.append((1.0 - lapse_rate) * upper_tail + 0.5 * lapse_rate)
+            numerical.append((1.0 - lapse_rate) * full_region + 0.5 * lapse_rate)
         np.testing.assert_allclose(
             prediction.probability_long.numpy(),
             numerical,

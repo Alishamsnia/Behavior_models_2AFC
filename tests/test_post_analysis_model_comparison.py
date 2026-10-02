@@ -30,11 +30,14 @@ from post_analysis.model_comparison.collect import (
     compute_sliding_window_event_aligned_trial0_paired_tests,
     event_aligned_unit_scalar,
     summarize_single_session_information_criteria,
+    BLOCK_TRANSITION_PERFORMANCE_RELATIVE_RANGE,
     BLOCK_TRANSITION_RELATIVE_RANGE,
     RARE_TRIAL_RELATIVE_RANGE,
     _aggregate_event_aligned_nll,
+    _block_transition_performance_rows_by_split,
     _detect_block_transition_events,
     _detect_rare_trial_events,
+    _trial_subset_rows,
 )
 from post_analysis.model_comparison.report import _append_adjacent_results
 
@@ -118,6 +121,10 @@ class ModelComparisonPostAnalysisTests(unittest.TestCase):
             "fig_single_session_event_aligned_nll",
             "fig_psychometric_comparison",
             "fig_block_transition_performance_by_trial_type",
+            "fig_prior_trajectory_samples",
+            "fig_sliding_window_parameter_mean_sd",
+            "fig_m4_hazard_curves_across_windows",
+            "fig_rare_trial_performance_by_type",
         )
         expected_tables = {
             "sliding_window_trial_subset_metrics.csv",
@@ -144,6 +151,8 @@ class ModelComparisonPostAnalysisTests(unittest.TestCase):
             "single_session_event_aligned_paired_pairwise.csv",
             "psychometric_comparison_summary.csv",
             "sliding_window_block_transition_performance.csv",
+            "sliding_window_prior_trajectory_samples.csv",
+            "sliding_window_rare_trial_performance.csv",
         }
         expected_calls = {
             "fig_global_and_detailed_nll": (
@@ -153,7 +162,8 @@ class ModelComparisonPostAnalysisTests(unittest.TestCase):
                 "mouse", "output",
             ),
             "fig_window_nll_trajectory": (
-                "sliding_window_split_session_metrics.csv", "output",
+                "sliding_window_split_session_metrics.csv",
+                "sliding_window_trial_subset_metrics.csv", "output",
             ),
             "fig_single_session_heldout_nll": (
                 "single_session_trial_subset_metrics.csv",
@@ -217,6 +227,18 @@ class ModelComparisonPostAnalysisTests(unittest.TestCase):
             "fig_block_transition_performance_by_trial_type": (
                 "sliding_window_block_transition_performance.csv", "mouse", "output",
             ),
+            "fig_prior_trajectory_samples": (
+                "sliding_window_prior_trajectory_samples.csv", "mouse", "output",
+            ),
+            "fig_sliding_window_parameter_mean_sd": (
+                "sliding_window_parameters.csv", "mouse", "output",
+            ),
+            "fig_m4_hazard_curves_across_windows": (
+                "sliding_window_parameters.csv", "mouse", "output",
+            ),
+            "fig_rare_trial_performance_by_type": (
+                "sliding_window_rare_trial_performance.csv", "mouse", "output",
+            ),
         }
         frames = {
             filename: pd.DataFrame({"source": [filename]})
@@ -241,7 +263,7 @@ class ModelComparisonPostAnalysisTests(unittest.TestCase):
             }
             selected = mc_figures.run("synthetic")
 
-        self.assertEqual(selected, tuple(f"fig{number:02d}" for number in range(1, 20)))
+        self.assertEqual(selected, tuple(f"fig{number:02d}" for number in range(1, 24)))
         self.assertEqual({call.args[0].name for call in read_csv.call_args_list}, expected_tables)
         self.assertEqual(read_csv.call_count, len(expected_tables))
         for renderer_name, expected_args in expected_calls.items():
@@ -253,17 +275,17 @@ class ModelComparisonPostAnalysisTests(unittest.TestCase):
             renderers[renderer_name].assert_called_once_with(*resolved_args)
 
     def test_figure_selectors_normalize_deduplicate_and_sort(self) -> None:
-        expected_all = tuple(f"fig{number:02d}" for number in range(1, 20))
+        expected_all = tuple(f"fig{number:02d}" for number in range(1, 24))
         self.assertEqual(mc_figures.normalize_figure_selectors(None), expected_all)
         self.assertEqual(
             mc_figures.normalize_figure_selectors(["17", "fig03", 3, "03", "fig1"]),
             ("fig01", "fig03", "fig17"),
         )
         self.assertEqual(mc_figures.normalize_figure_selectors("all"), expected_all)
-        self.assertEqual(len(mc_figures.list_figures()), 19)
+        self.assertEqual(len(mc_figures.list_figures()), 23)
 
     def test_invalid_figure_selection_fails_before_io(self) -> None:
-        for selectors in ([], ["fig00"], ["fig20"], ["bad"], [True]):
+        for selectors in ([], ["fig00"], ["fig24"], ["bad"], [True]):
             with self.subTest(selectors=selectors):
                 with (
                     patch.object(mc_figures.common, "ensure_output_dirs") as ensure_dirs,
@@ -274,7 +296,7 @@ class ModelComparisonPostAnalysisTests(unittest.TestCase):
                 ensure_dirs.assert_not_called()
                 read_csv.assert_not_called()
 
-    def test_selective_figure_run_reads_only_its_required_table(self) -> None:
+    def test_selective_figure_run_reads_only_its_required_tables(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             tables_dir, figures_dir = root / "tables", root / "figures"
@@ -289,8 +311,119 @@ class ModelComparisonPostAnalysisTests(unittest.TestCase):
             ):
                 selected = mc_figures.run("synthetic", ["fig02", "2"])
         self.assertEqual(selected, ("fig02",))
-        read_csv.assert_called_once_with(tables_dir / "sliding_window_split_session_metrics.csv")
-        renderer.assert_called_once_with(frame, figures_dir)
+        self.assertEqual(
+            [call.args[0] for call in read_csv.call_args_list],
+            [
+                tables_dir / "sliding_window_split_session_metrics.csv",
+                tables_dir / "sliding_window_trial_subset_metrics.csv",
+            ],
+        )
+        renderer.assert_called_once_with(frame, frame, figures_dir)
+
+    def test_window_nll_trajectory_keeps_centers_and_joins_trial_sem(self) -> None:
+        centers = pd.DataFrame({
+            "model_id": ["M0", "M0"],
+            "window_id": [11, 10],
+            "split_role": ["test", "test"],
+            "session_id": ["ALL_SESSIONS", "ALL_SESSIONS"],
+            "test_rank": [2, 1],
+            "mean_nll": [0.42, 0.37],
+        })
+        uncertainty = pd.DataFrame({
+            "model_id": ["M0", "M0"],
+            "window_id": [10, 11],
+            "split_role": ["test", "test"],
+            "trial_subset": ["all", "all"],
+            "mean_nll": [0.37, 0.42],
+            "nll_sem": [0.01, 0.02],
+            "n_trials": [100, 120],
+        })
+        result = mc_figures._window_nll_trajectory_data(
+            centers, uncertainty, "test", "M0",
+        )
+        self.assertEqual(result["test_rank"].tolist(), [1, 2])
+        self.assertEqual(result["mean_nll"].tolist(), [0.37, 0.42])
+        self.assertEqual(result["nll_sem"].tolist(), [0.01, 0.02])
+
+    def test_window_nll_trajectory_test_title_defines_sem_unit(self) -> None:
+        centers = pd.DataFrame({
+            "model_id": ["M0"] * 3,
+            "window_id": [1] * 3,
+            "split_role": ["train", "validation", "test"],
+            "session_id": ["ALL_SESSIONS"] * 3,
+            "test_rank": [1] * 3,
+            "mean_nll": [0.4, 0.5, 0.6],
+        })
+        uncertainty = pd.DataFrame({
+            "model_id": ["M0"] * 3,
+            "window_id": [1] * 3,
+            "split_role": ["train", "validation", "test"],
+            "trial_subset": ["all"] * 3,
+            "mean_nll": [0.4, 0.5, 0.6],
+            "nll_sem": [0.01, 0.02, 0.03],
+            "n_trials": [100, 50, 25],
+        })
+        with patch.object(mc_figures, "_save") as save:
+            mc_figures.fig_window_nll_trajectory(centers, uncertainty, Path("figures"))
+        figure = save.call_args.args[0]
+        try:
+            self.assertIn("SEM across individual-trial NLL values", figure.axes[2].get_title())
+            self.assertIn("held-out session", figure.axes[2].get_title())
+            for axis in figure.axes:
+                self.assertTrue(any(container.has_yerr for container in axis.containers))
+        finally:
+            mc_figures.plt.close(figure)
+
+    def test_window_nll_trajectory_rejects_missing_or_mismatched_sem_rows(self) -> None:
+        centers = pd.DataFrame({
+            "model_id": ["M0"], "window_id": [1], "split_role": ["test"],
+            "session_id": ["ALL_SESSIONS"], "test_rank": [1], "mean_nll": [0.4],
+        })
+        complete = pd.DataFrame({
+            "model_id": ["M0"], "window_id": [1], "split_role": ["test"],
+            "trial_subset": ["all"], "mean_nll": [0.4], "nll_sem": [0.02],
+            "n_trials": [25],
+        })
+        with self.assertRaisesRegex(ValueError, "Missing trial-level SEM rows"):
+            mc_figures._window_nll_trajectory_data(
+                centers, complete.iloc[0:0], "test", "M0",
+            )
+        with self.assertRaisesRegex(ValueError, "mean NLL disagree"):
+            mc_figures._window_nll_trajectory_data(
+                centers, complete.assign(mean_nll=0.5), "test", "M0",
+            )
+        with self.assertRaisesRegex(ValueError, "uncertainty column"):
+            mc_figures._window_nll_trajectory_data(
+                centers, complete.drop(columns="nll_sem"), "test", "M0",
+            )
+        for malformed in (
+            complete.assign(n_trials=np.inf),
+            complete.assign(n_trials=2.5),
+            complete.assign(nll_sem=-0.01),
+        ):
+            with self.subTest(values=malformed[["n_trials", "nll_sem"]].iloc[0].to_dict()):
+                with self.assertRaisesRegex(ValueError, "Invalid trial-level SEM"):
+                    mc_figures._window_nll_trajectory_data(
+                        centers, malformed, "test", "M0",
+                    )
+        singleton = mc_figures._window_nll_trajectory_data(
+            centers, complete.assign(n_trials=1, nll_sem=np.nan), "test", "M0",
+        )
+        self.assertTrue(np.isnan(singleton.loc[0, "nll_sem"]))
+
+    def test_finite_nll_filter_is_opt_in_for_sliding_window_sem(self) -> None:
+        trials = _small_trial_predictions_df().iloc[:3].copy()
+        trials["per_trial_negative_log_likelihood"] = [1.0, 3.0, np.inf]
+        finite = _trial_subset_rows(
+            trials, ("test",), include_finite_nll_sem=True,
+        )[0]
+        legacy = _trial_subset_rows(trials, ("test",))[0]
+        self.assertEqual(finite["n_trials"], 2)
+        self.assertEqual(finite["mean_nll"], 2.0)
+        self.assertEqual(finite["nll_sem"], 1.0)
+        self.assertEqual(legacy["n_trials"], 3)
+        self.assertTrue(np.isinf(legacy["mean_nll"]))
+        self.assertNotIn("nll_sem", legacy)
 
     def test_multi_figure_run_caches_shared_tables(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -307,12 +440,132 @@ class ModelComparisonPostAnalysisTests(unittest.TestCase):
                 patch.object(
                     mc_figures, "fig_sliding_window_model_specific_parameters",
                 ) as specific_renderer,
+                patch.object(
+                    mc_figures, "fig_sliding_window_parameter_mean_sd",
+                ) as summary_renderer,
             ):
-                selected = mc_figures.run("synthetic", ["fig09", "fig05"])
-        self.assertEqual(selected, ("fig05", "fig09"))
+                selected = mc_figures.run("synthetic", ["fig21", "fig09", "fig05"])
+        self.assertEqual(selected, ("fig05", "fig09", "fig21"))
         read_csv.assert_called_once_with(tables_dir / "sliding_window_parameters.csv")
         shared_renderer.assert_called_once_with(frame, figures_dir)
         specific_renderer.assert_called_once_with(frame, "synthetic", figures_dir)
+        summary_renderer.assert_called_once_with(frame, "synthetic", figures_dir)
+
+    def test_sliding_window_parameter_summary_has_expected_means_sd_and_groups(self) -> None:
+        rows = []
+        for param_name in mc_figures.PARAMETER_SUMMARY_ORDER:
+            model_ids = mc_figures._parameter_summary_models(param_name)
+            for model_index, model_id in enumerate(model_ids):
+                for window_id, offset in ((1, 1.0), (2, 3.0)):
+                    rows.append({
+                        "model_id": model_id,
+                        "window_id": window_id,
+                        "param_name": param_name,
+                        "param_value": model_index + offset,
+                    })
+        parameters = pd.DataFrame(rows)
+        summary = mc_figures.summarize_sliding_window_parameters(parameters)
+
+        self.assertEqual(len(summary), 35)  # 5*5 shared + 4+3+2+1 specific
+        w_m0 = summary[
+            (summary["param_name"] == "w") & (summary["model_id"] == "M0")
+        ].iloc[0]
+        self.assertEqual(w_m0["mean"], 2.0)
+        self.assertAlmostEqual(w_m0["sd"], np.sqrt(2.0))
+        self.assertEqual(w_m0["n_windows"], 2)
+
+        without_bh = mc_figures.summarize_sliding_window_parameters(
+            parameters[parameters["param_name"] != "bh"],
+        )
+        bh_m4 = without_bh[
+            (without_bh["param_name"] == "bh") & (without_bh["model_id"] == "M4")
+        ].iloc[0]
+        self.assertEqual(bh_m4["n_windows"], 0)
+        self.assertTrue(np.isnan(bh_m4["mean"]))
+        self.assertTrue(np.isnan(bh_m4["sd"]))
+
+        with self.assertRaisesRegex(ValueError, "Duplicate"):
+            mc_figures.summarize_sliding_window_parameters(
+                pd.concat([parameters, parameters.iloc[[0]]], ignore_index=True),
+            )
+
+        invalid_cases = (
+            (parameters.drop(columns="param_value"), "missing column"),
+            (parameters.assign(model_id="MX"), "parameter models"),
+            (parameters.assign(param_name="unknown"), "parameters"),
+            (
+                parameters.iloc[[0]].assign(model_id="M0", param_name="ah"),
+                "does not fit",
+            ),
+            (parameters.assign(window_id=np.nan), "window_id"),
+            (parameters.assign(param_value="bad"), "numeric"),
+            (
+                pd.DataFrame({
+                    "model_id": ["M4"], "window_id": [1],
+                    "param_name": [np.nan], "param_value": [1.0],
+                }),
+                "placeholder",
+            ),
+        )
+        for invalid, message in invalid_cases:
+            with self.subTest(message=message):
+                with self.assertRaisesRegex(ValueError, message):
+                    mc_figures.summarize_sliding_window_parameters(invalid)
+
+        finite_only = mc_figures.summarize_sliding_window_parameters(pd.DataFrame({
+            "model_id": ["M0", "M0"], "window_id": [1, 2],
+            "param_name": ["w", "w"], "param_value": [2.0, np.inf],
+        }))
+        w_m0 = finite_only[
+            (finite_only["param_name"] == "w") & (finite_only["model_id"] == "M0")
+        ].iloc[0]
+        self.assertEqual(w_m0["n_windows"], 1)
+        self.assertEqual(w_m0["mean"], 2.0)
+        self.assertTrue(np.isnan(w_m0["sd"]))
+
+    def test_sliding_window_parameter_mean_sd_uses_nine_panel_model_pattern(self) -> None:
+        rows = []
+        for param_name in mc_figures.PARAMETER_SUMMARY_ORDER:
+            for model_index, model_id in enumerate(
+                mc_figures._parameter_summary_models(param_name)
+            ):
+                windows = ((1, 1.0), (2, 3.0))
+                if param_name == "bh":
+                    windows = ((1, 1.0),)  # n=1: mean dot without an SD whisker
+                if param_name == "alpha_theta" and model_id == "M4":
+                    windows = ()  # n=0: retain the model tick without a dot
+                for window_id, offset in windows:
+                    rows.append({
+                        "model_id": model_id,
+                        "window_id": window_id,
+                        "param_name": param_name,
+                        "param_value": model_index + offset,
+                    })
+        with patch.object(mc_figures, "_save") as save:
+            mc_figures.fig_sliding_window_parameter_mean_sd(
+                pd.DataFrame(rows), "MCXX", Path("figures"),
+            )
+        figure, _, stem = save.call_args.args
+        try:
+            self.assertEqual(stem, "fig21_sliding_window_parameter_mean_sd")
+            self.assertEqual(len(figure.axes), 9)
+            self.assertEqual(
+                [len(axis.get_xticks()) for axis in figure.axes],
+                [5, 5, 5, 5, 5, 4, 3, 2, 1],
+            )
+            self.assertEqual(
+                [axis.get_title() for axis in figure.axes],
+                list(mc_figures.PARAMETER_SUMMARY_ORDER),
+            )
+            labels = [
+                label.get_text() for axis in figure.axes for label in axis.get_xticklabels()
+            ]
+            self.assertIn("M4\n(n=0)", labels)
+            self.assertIn("M4\n(n=1)", labels)
+            bh_markers = [line for line in figure.axes[8].lines if line.get_marker() == "o"]
+            self.assertEqual(len(bh_markers), 1)
+        finally:
+            mc_figures.plt.close(figure)
 
     def test_figure_cli_lists_and_normalizes_repeated_selectors(self) -> None:
         with (
@@ -322,7 +575,7 @@ class ModelComparisonPostAnalysisTests(unittest.TestCase):
         ):
             mc_figures.main()
         run.assert_not_called()
-        self.assertEqual(print_output.call_count, 19)
+        self.assertEqual(print_output.call_count, 23)
 
         with (
             patch(
@@ -645,11 +898,12 @@ class ModelComparisonPostAnalysisTests(unittest.TestCase):
                 "post_analysis.model_comparison.collect.common.sliding_window_dir",
                 side_effect=lambda model_id, mouse_id: root / model_id,
             ):
-                subset_table, event_table, block_transition_table = collect_sliding_window_trial_level_tables("synthetic")
+                subset_table, event_table, block_transition_table, rare_trial_table = collect_sliding_window_trial_level_tables("synthetic")
         m0 = subset_table[
             (subset_table["model_id"] == "M0") & (subset_table["split_role"] == "test")
         ].set_index("trial_subset")
         self.assertAlmostEqual(m0.loc["all", "mean_nll"], 4.5)
+        self.assertAlmostEqual(m0.loc["all", "nll_sem"], np.std(range(1, 9), ddof=1) / np.sqrt(8))
         self.assertEqual(m0.loc["all", "n_trials"], 8)
         self.assertAlmostEqual(m0.loc["short_block", "mean_nll"], 4.0)
         self.assertEqual(m0.loc["short_block", "n_trials"], 3)
@@ -657,6 +911,7 @@ class ModelComparisonPostAnalysisTests(unittest.TestCase):
         self.assertAlmostEqual(m0.loc["common_short", "mean_nll"], 3.5)
         self.assertAlmostEqual(m0.loc["common_long", "mean_nll"], 6.5)
         self.assertAlmostEqual(m0.loc["rare_short", "mean_nll"], 8.0)
+        self.assertTrue(np.isnan(m0.loc["rare_short", "nll_sem"]))
         self.assertEqual(m0.loc["rare_short", "n_trials"], 1)
         self.assertAlmostEqual(m0.loc["rare_long", "mean_nll"], 5.0)
         self.assertEqual(m0.loc["rare_long", "n_trials"], 1)
@@ -674,7 +929,7 @@ class ModelComparisonPostAnalysisTests(unittest.TestCase):
                 "post_analysis.model_comparison.collect.common.sliding_window_dir",
                 side_effect=lambda model_id, mouse_id: root / model_id,
             ):
-                subset_table, event_table, block_transition_table = collect_sliding_window_trial_level_tables("synthetic")
+                subset_table, event_table, block_transition_table, rare_trial_table = collect_sliding_window_trial_level_tables("synthetic")
         self.assertNotIn("M4", set(subset_table["model_id"]))
         self.assertNotIn("M4", set(event_table["model_id"]))
         self.assertIn("M0", set(subset_table["model_id"]))
@@ -829,6 +1084,124 @@ class ModelComparisonPostAnalysisTests(unittest.TestCase):
         row = events.iloc[0]
         self.assertEqual(row["event_category"], "block_transition_long_to_short")
         self.assertEqual(row["anchor_trial_index"], sum(block_lengths[:3]) + 1)
+
+    def test_figure19_uses_15_trials_before_and_20_after_switch(self) -> None:
+        self.assertEqual(
+            tuple(BLOCK_TRANSITION_PERFORMANCE_RELATIVE_RANGE),
+            tuple(range(-15, 21)),
+        )
+        self.assertEqual(len(BLOCK_TRANSITION_PERFORMANCE_RELATIVE_RANGE), 36)
+
+        def transition_trials(previous_length: int, new_length: int) -> pd.DataFrame:
+            n = previous_length + new_length
+            return pd.DataFrame({
+                "session_id": ["s1"] * n,
+                "trial_index": range(1, n + 1),
+                "block_index": [1] * previous_length + [2] * new_length,
+                "true_run_length": (
+                    list(range(1, previous_length + 1))
+                    + list(range(1, new_length + 1))
+                ),
+                "split_role": ["test"] * n,
+                "category_long": [index % 2 for index in range(n)],
+                "true_block": ["S"] * previous_length + ["L"] * new_length,
+                "mouse_correct": [1.0] * n,
+                "model_probability_correct": [0.8] * n,
+            })
+
+        exact = pd.DataFrame(
+            _block_transition_performance_rows_by_split(transition_trials(15, 21)),
+        )
+        self.assertEqual(set(exact["split_role"]), {"all", "test"})
+        self.assertEqual(exact["relative_position"].min(), -15)
+        self.assertEqual(exact["relative_position"].max(), 20)
+        self.assertTrue(exact["support_signature"].str.len().eq(64).all())
+        self.assertFalse(_block_transition_performance_rows_by_split(transition_trials(14, 21)))
+        self.assertFalse(_block_transition_performance_rows_by_split(transition_trials(15, 20)))
+
+    def test_figure19_overlay_matches_models_pointwise_and_deduplicates_mouse(self) -> None:
+        rows = []
+        for relative_position in (-15, 20):
+            for window_id in (1, 2):
+                for model_index, model_id in enumerate(MODEL_ORDER):
+                    if relative_position == 20 and window_id == 2 and model_id == "M4":
+                        continue
+                    rows.append({
+                        "model_id": model_id,
+                        "window_id": window_id,
+                        "relative_position": relative_position,
+                        "mean_mouse_correct": 0.5 + 0.1 * window_id,
+                        "mean_model_probability_correct": 0.4 + 0.01 * model_index,
+                        "n_trials": 4,
+                        "support_signature": f"support-{window_id}-{relative_position}",
+                    })
+        panel = pd.DataFrame(rows)
+        summary = mc_figures._matched_block_transition_overlay_summary(panel)
+
+        self.assertEqual(set(summary["series_id"]), {"Mouse", *MODEL_ORDER})
+        self.assertEqual(len(summary), 2 * (len(MODEL_ORDER) + 1))
+        mouse = summary.loc[summary["series_id"] == "Mouse"].set_index("relative_position")
+        self.assertEqual(mouse.loc[-15, "n_windows"], 2)
+        self.assertEqual(mouse.loc[20, "n_windows"], 1)
+        self.assertAlmostEqual(mouse.loc[-15, "mean"], 0.65)
+        self.assertAlmostEqual(mouse.loc[20, "mean"], 0.6)
+        self.assertTrue(np.isnan(mouse.loc[20, "sem"]))
+        self.assertEqual(
+            mc_figures._window_count_range_label(
+                mouse["n_windows"], "matched",
+            ),
+            "N=0–2 matched windows/position",
+        )
+
+        mismatched = panel.copy()
+        mismatched.loc[
+            (mismatched["model_id"] == "M4")
+            & (mismatched["window_id"] == 1)
+            & (mismatched["relative_position"] == -15),
+            "mean_mouse_correct",
+        ] = 0.99
+        with self.assertRaisesRegex(ValueError, "Mouse correctness differs across models"):
+            mc_figures._matched_block_transition_overlay_summary(mismatched)
+
+        mismatched_support = panel.copy()
+        mismatched_support.loc[
+            (mismatched_support["model_id"] == "M4")
+            & (mismatched_support["window_id"] == 1)
+            & (mismatched_support["relative_position"] == -15),
+            "support_signature",
+        ] = "different-support"
+        with self.assertRaisesRegex(ValueError, "Trial support differs across models"):
+            mc_figures._matched_block_transition_overlay_summary(mismatched_support)
+
+        missing_support = panel.copy()
+        missing_support["support_signature"] = np.nan
+        with self.assertRaisesRegex(ValueError, "Missing trial support signature"):
+            mc_figures._matched_block_transition_overlay_summary(missing_support)
+
+    def test_figure19_appends_all_model_overlay_as_sixth_page(self) -> None:
+        columns = [
+            "model_id", "window_id", "split_role", "event_category", "trial_type",
+            "relative_position", "mean_mouse_correct",
+            "mean_model_probability_correct", "n_trials", "support_signature",
+        ]
+        empty = pd.DataFrame(columns=columns)
+        real_subplots = mc_figures.plt.subplots
+
+        def small_subplots(*args, **kwargs):
+            kwargs["figsize"] = (8.0, 6.0)
+            return real_subplots(*args, **kwargs)
+
+        with (
+            patch.object(mc_figures.plt, "subplots", side_effect=small_subplots),
+            patch.object(mc_figures, "_save_pdf_pages") as save_pages,
+        ):
+            mc_figures.fig_block_transition_performance_by_trial_type(
+                empty, "synthetic", Path("unused"),
+            )
+        pages = save_pages.call_args.args[0]
+        self.assertEqual(len(pages), len(MODEL_ORDER) + 1)
+        for figure in pages:
+            mc_figures.plt.close(figure)
 
     def test_rare_trial_events_require_same_block_window(self) -> None:
         # One 5-trial long_block: rare_short at position 3 has a full +/-2

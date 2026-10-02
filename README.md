@@ -56,7 +56,7 @@ Implemented:
 - empirical task moments from the real truncated short/long distributions;
 - constrained/raw parameter transformations;
 - Gaussian category approximation and posterior log-odds coefficients;
-- the registered positive-root-only decision threshold;
+- the full quadratic decision region shared with the context models;
 - analytical Gaussian-CDF sensory integration;
 - category-dependent random-choice lapse mixing;
 - independent per-session Bernoulli likelihoods;
@@ -102,11 +102,11 @@ The empirical category approximation uses
 v_k = tau_k² + w*mu_k² + s0².
 ```
 
-The posterior log odds are `a2*x² + a1*x + a0`. The implementation calculates
-the unique positive real root `T`, discards the negative root, and uses
+The posterior log odds are `a2*x² + a1*x + a0`. M0 uses the same full-region
+solver as M1–M4, with the fixed neutral prior 0.5:
 
 ```text
-q(s) = P(X > T | s) = Phi((s - T) / sqrt(w*s² + s0²)).
+q(s) = P(a2*X² + a1*X + a0 > 0 | s).
 epsilon_t = ell_long*I(category_long=1) + ell_short*I(category_long=0).
 p_t = (1 - epsilon_t)*q_t + epsilon_t/2.
 ```
@@ -203,7 +203,7 @@ The eight starts are stored as scientific `(w, s0, ell_short, ell_long, kappa)` 
 [`config/initializations/m0_sensory_v1_starts_ell100.json`](config/initializations/m0_sensory_v1_starts_ell100.json).
 They are eight explicit mixed vectors—not the 4,096-point Cartesian product of
 their marginal values. The registry verifies their SHA-256 checksum, open
-bounds, uniqueness, finite raw transforms, and positive decision thresholds.
+bounds, uniqueness, finite raw transforms, and valid full-region probabilities.
 
 ## Part V component registry
 
@@ -213,10 +213,17 @@ numerical tolerances, parameter order, prior, objective, initialization table,
 split artifact, random seeds, convergence rules, metric names, and software
 version.
 
-The positive-root solver now returns a structured region containing the
-positive threshold, solver regime, `x > threshold` rule, discriminant, and the
-explicit `negative_root_policy="discard"`. It never returns a negative-root
-value.
+The active solver integrates both tails for upward quadratics, the interval
+between roots for downward quadratics, and the appropriate linear/constant
+limits. Trial exports include both boundaries and the regime. The historical
+`model_positive_threshold_s` column remains an upper-boundary compatibility
+alias, matching the context models; it is not the action rule.
+
+This supersedes the former positive-root-only M0 readout. The five parameters,
+fixed prior, lapse mixture, masking, loss, and fitting protocols are unchanged.
+Updated M0 registry checksums make historical fits stale under `--resume`;
+use separate output directories when retaining the old analysis. Historical
+release manifests and recovery reports describe the former readout.
 
 Audit the complete registry without loading behavioral trials:
 
@@ -1347,6 +1354,11 @@ the fine-tuning prefix and the final two blocks (including the terminal block)
 are test-only. No window averaging is used, and held-out choices never update
 parameters. Results are isolated below a `full_session_matched_v1` subdirectory
 so they cannot overwrite legacy outputs.
+
+`scripts/run_m1_action_kernel_sliding_window.py` is matched-only: its legacy
+workflow option and block-partition path have been removed. The script always
+uses the full-session rolling scope and the matched test-session fine-tuning
+contract described above. Other model runners retain both workflow choices.
 
 M4 single-session fits must pass the same registered acceptance gates used for
 rolling-window winner selection: convergence, acceptable projection activity,

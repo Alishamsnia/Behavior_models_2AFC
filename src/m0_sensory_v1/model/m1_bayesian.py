@@ -1,4 +1,4 @@
-"""General Gaussian decision-region integration used only by M1."""
+"""Shared full Gaussian decision-region integration for M0 and context models."""
 
 from __future__ import annotations
 
@@ -28,9 +28,25 @@ class GeneralDecisionRegion:
 
     lower_boundary_s: torch.Tensor
     upper_boundary_s: torch.Tensor
-    regime: str
-    long_region: str
+    regime: str | tuple[str, ...]
+    long_region: str | tuple[str, ...]
     discriminant: torch.Tensor | None
+
+
+    @property
+    def threshold_s(self) -> torch.Tensor:
+        """Compatibility alias for the upper boundary, not a one-threshold rule."""
+        return self.upper_boundary_s
+
+    @property
+    def solver_regime(self) -> str | tuple[str, ...]:
+        """Compatibility alias for the full-region regime."""
+        return self.regime
+
+    @property
+    def negative_root_policy(self) -> str:
+        """All real measurement regions are integrated, including negative tails."""
+        return "integrate_all_real_measurement_regions"
 
 
 @dataclass(frozen=True)
@@ -47,7 +63,7 @@ class M1BayesianChoiceResult:
 def _truth(value: torch.Tensor) -> bool:
     """Read a scalar tensor only to select its analytic integration regime."""
 
-    return bool(value.detach().cpu())
+    return bool((value if value.ndim == 0 else torch.all(value)).detach().cpu())
 
 
 def integrate_general_decision_region(
@@ -84,18 +100,19 @@ def integrate_general_decision_region(
 
     Input units and shapes
     ----------------------
-    Duration, sensory SD, and returned finite boundaries are scalar seconds.
-    Coefficients are scalar float tensors.
+    Duration and sensory SD are broadcastable tensors in seconds. Scalar
+    coefficients use one vectorized integration; batched coefficients are
+    grouped by decision regime and integrated with the same vectorized solver.
 
     Returned quantities and shapes
     ------------------------------
-    Returns scalar non-lapse probability ``q`` and a structured region with
+    Returns broadcast-shaped non-lapse probability ``q`` and a structured region with
     lower/upper boundaries, regime, sign region, and optional discriminant.
 
     Constraints
     -----------
-    Sensory SD must be positive upstream; scalar inputs and positive numerical
-    tolerances are required.
+    Sensory SD must be positive upstream; positive numerical tolerances are
+    required. Batched regime labels are tuples in flattened row-major order.
 
     Numerical stability
     -------------------
@@ -118,13 +135,97 @@ def integrate_general_decision_region(
     ``test_general_solver_handles_double_no_root_and_constant_cases``.
     """
 
-    if duration_s.ndim != 0 or sensory_sd_s.ndim != 0:
-        raise ValueError("M1 general decision integration currently expects scalars")
+    duration_s, sensory_sd_s = torch.broadcast_tensors(duration_s, sensory_sd_s)
     if quadratic_tolerance <= 0.0 or discriminant_tolerance <= 0.0:
         raise ValueError("Decision-region tolerances must be positive")
     a2, a1, a0 = coefficients.a2, coefficients.a1, coefficients.a0
     if a2.ndim != 0 or a1.ndim != 0 or a0.ndim != 0:
-        raise ValueError("M1 general decision coefficients must be scalar")
+        return _integrate_batched_decision_regions(
+            duration_s, sensory_sd_s, coefficients,
+            quadratic_tolerance=quadratic_tolerance,
+            discriminant_tolerance=discriminant_tolerance,
+        )
+    return _integrate_homogeneous_decision_region(
+        duration_s, sensory_sd_s, coefficients,
+        quadratic_tolerance=quadratic_tolerance,
+        discriminant_tolerance=discriminant_tolerance,
+    )
+
+
+def _integrate_batched_decision_regions(
+    duration_s: torch.Tensor,
+    sensory_sd_s: torch.Tensor,
+    coefficients: LogOddsCoefficients,
+    *,
+    quadratic_tolerance: float,
+    discriminant_tolerance: float,
+) -> tuple[torch.Tensor, GeneralDecisionRegion]:
+    """Group broadcast coefficients into at most ten analytic sign regimes.
+
+    Only each selected group enters its branch's divisions and square roots.
+    This avoids NaN gradients from evaluating invalid unselected branches with
+    torch.where, and avoids one Python/CDF/autograd call per trial.
+    """
+    duration, sd, a2, a1, a0 = torch.broadcast_tensors(
+        duration_s, sensory_sd_s, coefficients.a2, coefficients.a1, coefficients.a0
+    )
+    shape = duration.shape
+    # broadcast_tensors expands shapes but does not promote mixed dtypes.
+    # Match arithmetic promotion before allocating index_copy destinations.
+    dtype = duration.dtype
+    for tensor in (sd, a2, a1, a0):
+        dtype = torch.promote_types(dtype, tensor.dtype)
+    duration, sd, a2, a1, a0 = (
+        x.to(dtype=dtype).reshape(-1) for x in (duration, sd, a2, a1, a0)
+    )
+    # Classification is diagnostic control flow, exactly like scalar _truth.
+    with torch.no_grad():
+        discriminant = a1.square() - 4.0 * a2 * a0
+        linear_key = torch.where(a1.abs() <= quadratic_tolerance,
+                                 (a0 <= 0).long(), 2 + (a1 < 0).long())
+        quadratic_key = torch.where(
+            discriminant < -discriminant_tolerance, 4,
+            torch.where(discriminant.abs() <= discriminant_tolerance, 6, 8),
+        ) + (a2 < 0).long()
+        keys = torch.where(a2.abs() <= quadratic_tolerance, linear_key, quadratic_key)
+    probability = torch.zeros_like(duration)
+    lower = torch.full_like(duration, torch.nan)
+    upper = lower.clone()
+    discriminants = lower.clone()
+    regimes = [""] * duration.numel()
+    long_regions = [""] * duration.numel()
+    for key in torch.unique(keys).tolist():
+        indices = torch.nonzero(keys == key, as_tuple=False).flatten()
+        q, region = _integrate_homogeneous_decision_region(
+            duration[indices], sd[indices],
+            LogOddsCoefficients(a2[indices], a1[indices], a0[indices]),
+            quadratic_tolerance=quadratic_tolerance,
+            discriminant_tolerance=discriminant_tolerance,
+        )
+        probability = probability.index_copy(0, indices, q)
+        lower = lower.index_copy(0, indices, region.lower_boundary_s.expand_as(q))
+        upper = upper.index_copy(0, indices, region.upper_boundary_s.expand_as(q))
+        if region.discriminant is not None:
+            discriminants = discriminants.index_copy(0, indices, region.discriminant)
+        for index in indices.tolist():
+            regimes[index] = region.regime
+            long_regions[index] = region.long_region
+    return probability.reshape(shape), GeneralDecisionRegion(
+        lower.reshape(shape), upper.reshape(shape), tuple(regimes),
+        tuple(long_regions), discriminants.reshape(shape),
+    )
+
+
+def _integrate_homogeneous_decision_region(
+    duration_s: torch.Tensor,
+    sensory_sd_s: torch.Tensor,
+    coefficients: LogOddsCoefficients,
+    *,
+    quadratic_tolerance: float,
+    discriminant_tolerance: float,
+) -> tuple[torch.Tensor, GeneralDecisionRegion]:
+    """Original scalar branch equations, also applied to same-regime batches."""
+    a2, a1, a0 = coefficients.a2, coefficients.a1, coefficients.a0
     normal = torch.distributions.Normal(duration_s, sensory_sd_s)
     nan = duration_s.new_tensor(torch.nan)
     neg_inf = duration_s.new_tensor(-torch.inf)
@@ -133,7 +234,7 @@ def integrate_general_decision_region(
     if _truth(torch.abs(a2) <= quadratic_tolerance):
         if _truth(torch.abs(a1) <= quadratic_tolerance):
             all_long = _truth(a0 > 0.0)
-            probability = duration_s.new_tensor(1.0 if all_long else 0.0) + a0 * 0.0
+            probability = torch.full_like(duration_s, 1.0 if all_long else 0.0) + a0 * 0.0
             return probability, GeneralDecisionRegion(
                 nan, nan, "constant", "all real x" if all_long else "empty", None
             )
@@ -150,7 +251,7 @@ def integrate_general_decision_region(
     discriminant = a1.square() - 4.0 * a2 * a0
     if _truth(discriminant < -discriminant_tolerance):
         all_long = _truth(a2 > 0.0)
-        probability = duration_s.new_tensor(1.0 if all_long else 0.0) + discriminant * 0.0
+        probability = torch.full_like(duration_s, 1.0 if all_long else 0.0) + discriminant * 0.0
         return probability, GeneralDecisionRegion(
             nan,
             nan,
@@ -175,7 +276,7 @@ def integrate_general_decision_region(
         # without the singular intermediate.
         all_long = _truth(a2 > 0.0)
         root = -a1 / (2.0 * a2)
-        probability = duration_s.new_tensor(1.0 if all_long else 0.0) + discriminant * 0.0
+        probability = torch.full_like(duration_s, 1.0 if all_long else 0.0) + discriminant * 0.0
         return probability, GeneralDecisionRegion(
             root,
             root,

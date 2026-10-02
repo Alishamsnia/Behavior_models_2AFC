@@ -87,6 +87,9 @@ def build_trial_predictions(
             prediction.non_lapse_probability_long.cpu().numpy()
         )
         part["model_positive_threshold_s"] = prediction.positive_threshold_s.cpu().numpy()
+        part["model_decision_lower_boundary_s"] = prediction.decision_lower_boundary_s.cpu().numpy()
+        part["model_decision_upper_boundary_s"] = prediction.decision_upper_boundary_s.cpu().numpy()
+        part["model_decision_regime"] = prediction.decision_regime
         part["model_sensory_sd_s"] = prediction.sensory_sd_s.cpu().numpy()
         part["per_trial_negative_log_likelihood"] = (
             evaluation.per_trial_negative_log_likelihood.cpu().numpy()

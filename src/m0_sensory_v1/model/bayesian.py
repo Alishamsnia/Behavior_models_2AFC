@@ -1,13 +1,17 @@
-"""Differentiable positive-threshold Bayesian sensory readout."""
+"""Differentiable full-region Bayesian sensory readout and legacy root helpers."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import torch
 
 from ..data.task_moments import TaskMoments
 from .parameters import DecodedParameters
+
+if TYPE_CHECKING:
+    from .m1_bayesian import GeneralDecisionRegion
 
 
 @dataclass(frozen=True)
@@ -43,14 +47,14 @@ class BayesianChoiceResult:
     """Non-lapse probability and diagnostics for evaluated valid trials."""
 
     probability_long: torch.Tensor
-    decision_region: PositiveDecisionRegion
+    decision_region: GeneralDecisionRegion
     sensory_sd_s: torch.Tensor
     category_variances: CategoryVariances
     coefficients: LogOddsCoefficients
 
     @property
     def positive_threshold_s(self) -> torch.Tensor:
-        """Return the structured region's positive threshold for compatibility."""
+        """Return the upper boundary compatibility alias (possibly infinite or NaN)."""
 
         return self.decision_region.threshold_s
 
@@ -526,48 +530,49 @@ def bayesian_choice_probability(
     moments: TaskMoments,
     prior_long: torch.Tensor,
 ) -> BayesianChoiceResult:
-    r"""Integrate sensory noise above the positive decision threshold.
+    r"""Integrate the full quadratic action region using the shared solver.
 
     Purpose
     -------
-    Compute the non-lapse probability of a long response analytically without
-    Monte Carlo sampling.
+    Compute M0's non-lapse probability with exactly the same Gaussian-region
+    integration used by the context models, without Monte Carlo sampling.
 
     Mathematical definition
     -----------------------
-    With :math:`X\mid s\sim\mathcal N(s,\sigma(s)^2)` and the registered
-    positive threshold :math:`T`, long is chosen when :math:`X>T`; therefore
+    With :math:`X\mid s\sim\mathcal N(s,ws^2+s_0^2)`, integrate
 
     .. math::
 
-       q(s)=P(X>T\mid s)
-           =1-\Phi\left(\frac{T-s}{\sigma(s)}\right)
-           =\Phi\left(\frac{s-T}{\sigma(s)}\right).
+       q(s)=P[a_2X^2+a_1X+a_0>0\mid s].
 
-    The negative quadratic root and its extreme lower tail are not used.
+    Both tails are integrated for an upward quadratic and the interval between
+    roots for a downward quadratic. Linear and constant regions are included.
 
     Parameter interpretation
     ------------------------
-    ``prior_long`` affects the Bayesian boundary; M0 always passes exactly 0.5.
+    ``prior_long`` affects the Bayesian region; M0 passes exactly 0.5.
+    Sensory, lapse, and decision-cost parameters retain their definitions.
 
     Input units and shapes
     ----------------------
-    Durations and threshold are seconds. Inputs may be one-dimensional valid
-    trial vectors; the prior may be scalar or trial-shaped.
+    Durations and boundaries are seconds. Durations, parameters, and priors
+    may broadcast. A scalar prior keeps pooled M0's integration vectorized.
 
     Returned quantities and shapes
     ------------------------------
-    Returns trial-shaped ``q``, positive threshold, sensory SD, category
-    variances, and log-odds coefficients.
+    Returns probability, both region boundaries, regime, sensory SD, category
+    variances, and coefficients. ``positive_threshold_s`` is retained as an
+    upper-boundary alias, matching the other models; it is not a decision rule.
 
     Constraints
     -----------
-    Inputs must satisfy the unique-positive-root contract.
+    Sensory variance must be positive and the prior must lie in (0,1).
+    No positive-root or quadratic-curvature restriction is imposed.
 
     Numerical stability
     -------------------
-    Uses Torch's differentiable standard-normal CDF in the input dtype. No
-    probability clamp is applied to diagnostic predictions.
+    Uses the shared solver's default tolerances and identical Torch CDF
+    expressions. Diagnostic probabilities are not clamped.
 
     Causal restrictions
     -------------------
@@ -575,22 +580,27 @@ def bayesian_choice_probability(
 
     Important edge cases
     --------------------
-    Invalid trials must be skipped before calling this function. Root-structure
-    violations raise rather than invoking an unregistered fallback region.
+    Invalid trials must be masked upstream. Constant regions have NaN
+    boundaries; linear regions have an infinite endpoint. Neither is a failure.
+    Legacy positive-root helpers remain available but are not called here.
 
     Related tests
     -------------
-    ``test_choice_probability_matches_normal_cdf`` and the autograd test.
+    ``test_choice_probability_matches_normal_cdf`` and ``test_m0_full_region``.
     """
+
+    # Local import avoids a cycle: the shared solver imports the coefficient
+    # and sensory-variance primitives from this module.
+    from .m1_bayesian import integrate_general_decision_region
 
     variances = category_variances(parameters, moments)
     coefficients = log_odds_coefficients(
         variances, moments, prior_long, parameters.log_kappa
     )
-    decision_region = solve_positive_decision_region(coefficients)
-    threshold = decision_region.threshold_s
     sensory_sd = sensory_standard_deviation(duration_s, parameters)
-    probability_long = torch.special.ndtr((duration_s - threshold) / sensory_sd)
+    probability_long, decision_region = integrate_general_decision_region(
+        duration_s, sensory_sd, coefficients
+    )
     return BayesianChoiceResult(
         probability_long=probability_long,
         decision_region=decision_region,

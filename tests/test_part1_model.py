@@ -163,8 +163,9 @@ class PartOneModelTests(unittest.TestCase):
             REFERENCE_MOMENTS,
             fixed_neutral_prior(durations),
         )
-        expected = torch.distributions.Normal(0.0, 1.0).cdf(
-            (durations - result.positive_threshold_s) / result.sensory_sd_s
+        normal = torch.distributions.Normal(durations, result.sensory_sd_s)
+        expected = normal.cdf(result.decision_region.lower_boundary_s) + (
+            1.0 - normal.cdf(result.decision_region.upper_boundary_s)
         )
         torch.testing.assert_close(result.probability_long, expected, rtol=1e-13, atol=1e-13)
         self.assertTrue(torch.all(result.positive_threshold_s > 0.0))

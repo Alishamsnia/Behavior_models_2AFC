@@ -1,0 +1,7 @@
+{
+  "extends": "m1_stimulus_kernel_v1.json",
+  "source_m0_registry": {
+    "file": "config/m0_sensory_v1_mc06.json",
+    "sha256": "d01ce1a16b60c065f267bab8aa881f37cad8da2f94f6eb63695ae7b24f5f029a"
+  }
+}

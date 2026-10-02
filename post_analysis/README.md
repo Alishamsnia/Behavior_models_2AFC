@@ -5,6 +5,62 @@ here only **reads** artifacts already written under `results_sliding_window/`
 and `results_single_session/`; nothing is re-fit and nothing outside
 `results_post_analysis/` is ever written.
 
+## Analysis 0: expanded sliding-window comparison (MC08)
+
+This comparison registers 12 requested models, including the two new M2 bias
+variants. It rejects any workflow other than `full_session_matched`, excludes
+an incomplete model wholesale from scientific outputs, and prints
+`<model>: not completely run` for every incomplete configured model.
+
+```bash
+python -u -m post_analysis.run_expanded_model_comparison --mouse MC08
+```
+
+Outputs are written to
+`results_post_analysis/expanded_model_comparison/MC08/`. Figure 0 ranks fit
+quality separately for train, validation, and test. Its PDF adds paired 95%
+basic moving-block-bootstrap confidence intervals and Holm-adjusted block-bootstrap
+TOST results for the eligible deployable models, grouped into WSLS, M0, M1,
+and M2 families. The practical-equivalence margin is +/-0.005 mean-window NLL.
+The tables also contain
+all pairwise comparisons, all-model and non-oracle rankings, completion
+diagnostics, win counts, and AIC/BIC. The known-switch models are identified
+as oracle benchmarks. Until all 12 models finish, every figure is visibly
+marked provisional and partial model windows are never included.
+
+To recompute only the Figure 0 CI/TOST tables and rerender its PNG/PDF from the
+already collected tables (without auditing models or rendering Figures 1-23):
+
+```bash
+python -u -m post_analysis.expanded_model_comparison.figures --mouse MC08 --figure fig00
+```
+
+The expanded output contains Figure 0 plus a complete sliding-window Figure
+1–23 suite. Existing Figure 1–6 artifacts are retained; Figures 7–23 add
+trial-subset NLL, rank stability, parameter trajectories/distributions,
+availability, train/test agreement, IC weights, event-aligned NLL and
+correctness, held-out psychometrics, transition/rare-trial performance, prior
+samples, parameter mean/SD, and hazard curves. No single-session artifacts are
+read by this analysis.
+
+Expanded Figure 7–23 mapping:
+
+- Figure 7: train/validation/test NLL for seven trial subsets.
+- Figure 8: per-window model-rank stability by split.
+- Figures 9, 11, 12, and 21: shared/model-specific parameter trajectories,
+  distributions, and across-window mean ± SD.
+- Figure 10: completion availability for all 12 configured models; this is the
+  only suite panel allowed to show incomplete models.
+- Figures 13–14: training winner timeline and train-versus-test agreement.
+- Figure 15: AIC/BIC model weights on identical training trials.
+- Figures 16–17: event-aligned NLL and model-minus-mouse correctness
+  (transitions −5…+5; rare trials −2…+2).
+- Figure 18: held-out mouse-versus-model psychometrics.
+- Figure 19: transition performance by stimulus type over trials −15…+20.
+- Figure 20: causal prior trajectories for applicable eligible models.
+- Figure 22: switch-hazard curves for applicable eligible hazard models.
+- Figure 23: rare-trial performance by stimulus type over trials −2…+2.
+
 ## Analysis 1: `model_comparison` (M0 vs M1 vs M2 vs M3 vs M4)
 
 Run both stages for one mouse:
@@ -45,7 +101,7 @@ List the available IDs without reading any tables or creating outputs:
 python -u -m post_analysis.model_comparison.figures --list-figures
 ```
 
-Omitting `--figure` preserves the previous behavior and renders all 17. A
+Omitting `--figure` preserves the previous behavior and renders all 21. A
 selective run regenerates only the requested PNG/PDF files; existing outputs
 for unselected figures remain untouched. The full
 `post_analysis.run_model_comparison` command still performs collection, renders
@@ -72,7 +128,7 @@ tables/
   chronological_train_vs_test_winner_agreement_*.csv  # does the in-sample winner also win held-out, per rank / summarized
   sliding_window_paired_pairwise.csv          # four adjacent paired contrasts per split, exact common-window population
   single_session_paired_pairwise.csv          # four adjacent paired contrasts per role, exact common-session population
-  sliding_window_trial_subset_metrics.csv     # per (model, window, split, trial_subset): mean_nll/n_trials for the 7 fig01 columns
+  sliding_window_trial_subset_metrics.csv     # per (model, window, split, trial_subset): mean_nll/nll_sem/n_trials (SEM across finite individual-trial NLLs)
   single_session_trial_subset_metrics.csv     # per (model, session, role, trial_subset): mean_nll/n_trials for the 7 fig03 columns
   sliding_window_trial_subset_pooled_diamonds.csv  # trial-weighted pooled NLL per (model, split, trial_subset) -- fig01's diamonds
   sliding_window_trial_subset_paired_pairwise.csv  # four adjacent contrasts per (split, trial_subset) subplot
@@ -89,10 +145,10 @@ tables/
   information_criteria_paired_pairwise.csv    # four adjacent paired contrasts for AIC/BIC at both analysis levels
   psychometric_comparison_trials.csv          # per (model, source, session, trial): matched trial-level rows behind fig18
   psychometric_comparison_summary.csv         # per (model, source, block_subset, bin): four-quantile-bin psychometric summary for fig18
-  sliding_window_block_transition_performance.csv  # per (model, window, split_role, event_category, trial_type, relative_position): window-level mean mouse/model correctness, +/-10 trials around block transitions, for fig19
+  sliding_window_block_transition_performance.csv  # per (model, window, split_role, event_category, trial_type, relative_position): window-level mean mouse/model correctness, trials -15 through +20 around block transitions, for fig19
 figures/
   fig01_sliding_window_global_and_detailed_nll.{png,pdf}           # 3 rows (train/val/test) x 7 trial-subset columns; four adjacent paired tests per subplot
-  fig02_sliding_window_nll_trajectory.{png,pdf}
+  fig02_sliding_window_nll_trajectory.{png,pdf}                    # per-window pooled mean NLL ± SEM across the contributing individual-trial NLLs; row 3 states the held-out test definition explicitly
   fig03_single_session_heldout_nll.{png,pdf}                       # 2 rows (training-prefix/held-out) x 7 trial-subset columns; four adjacent paired tests per subplot
   fig04_single_session_win_counts.{png,pdf}                        # "how many sessions does each model win"
   fig05_shared_parameter_trajectories.{png,pdf}
@@ -109,7 +165,9 @@ figures/
   fig16_sliding_window_event_aligned_nll.{png,pdf}                 # 2x2 event trajectories plus 2 rows of 4 paired summary panels (block transitions, then rare trials); NOW 4 PAGES -- the .pdf has one page each for all/train/validation/test sessions (collect.EVENT_ALIGNED_SPLIT_ROLES), the .png mirrors page 1 (all), and fig16_..._page{1..4}_{split}.png give each page as its own flat PNG
   fig17_single_session_event_aligned_nll.{png,pdf}                 # same 2x2 layout, single-session fine-tuning
   fig18_psychometric_comparison.{png,pdf}                          # 5 model rows x 4 block-type columns; sliding-window (zero-shot) vs. single-session (fine-tuned) prediction on the identical trial population
-  fig19_sliding_window_block_transition_performance_by_trial_type.pdf  # PDF ONLY (no PNG), 5 pages (one per model); each page a plain 4x4 grid (rows=all/train/validation/test, columns=short/long trials x short-to-long/long-to-short transitions), mouse vs model P(correct) +/-10 trials around the transition
+  fig19_sliding_window_block_transition_performance_by_trial_type.pdf  # PDF ONLY (no PNG), 6 pages (one per model plus a final all-model overlay); each page is a plain 4x4 grid (rows=all/train/validation/test, columns=short/long trials x short-to-long/long-to-short transitions), mouse/model P(correct) from trial -15 through +20 around the transition; the overlay uses all-model matched windows at each relative position
+  fig20_sliding_window_long_block_prior_causal_trajectory_samples.pdf  # PDF ONLY; M1-M4 parameter trajectories plus an all-model overlay
+  fig21_sliding_window_parameter_mean_sd.{png,pdf}                    # 3x3 constrained-parameter summary; dots=across-window means, whiskers=±1 sample SD, with 5/4/3/2/1 models across shared/specific panels
 summary.md
 ```
 

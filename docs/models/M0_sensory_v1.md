@@ -1,9 +1,11 @@
-# M0_sensory_v1 — frozen Parts I-X specification
+# M0_sensory_v1 — Parts I-X specification
 
-This document is authoritative for implemented Parts I-X. It incorporates the
-project decision to use only the positive decision root. It therefore
-intentionally supersedes the two-root decision-region discussion in the
-original planning document.
+M0 now uses the full quadratic decision region shared with M1–M4. This
+supersedes the historical positive-root-only restriction. Its fixed prior,
+five parameters, category-specific lapse mixture, omission mask, objective,
+session independence, initialization table, and fitting/window logic are unchanged.
+The updated registry checksum distinguishes new fits from historical results;
+old fitted parameters and predictions must not be treated as full-region fits.
 
 ## Observations and valid decisions
 
@@ -90,43 +92,34 @@ a0 = mu0²/(2*v0) - mu1²/(2*v1)
 `kappa > 0` is an internal decision-cost ratio. `kappa=1` is neutral,
 `kappa>1` favors short choices, and `kappa<1` favors long choices.
 
-## Positive-root-only decision rule
+## Full quadratic decision rule
 
-For
+The shared solver in `model/m1_bayesian.py` integrates the complete region
+`a2*X² + a1*X + a0 > 0`, using the same tolerances and Gaussian CDF expressions
+as the context models. M0 still supplies the exact prior `0.5`.
 
-```text
-Delta = a1² - 4*a2*a0,
-x_minus = (-a1 - sqrt(Delta))/(2*a2),
-x_plus  = (-a1 + sqrt(Delta))/(2*a2),
-```
+For two distinct roots `lower < upper`:
 
-the solver requires exactly one unique positive real root and returns it as
-`T`. A positive double root is one unique threshold and is accepted. The
-negative mathematical root is discarded. When `abs(a2)` is below the
-quadratic tolerance, the solver uses the linear limit `T = -a0/a1` and requires
-`T > 0`.
+- `a2 > 0`: choose long outside the roots, including the negative measurement tail.
+- `a2 < 0`: choose long between the roots.
 
-The registered action rule is exclusively:
-
-```text
-choose long iff X > T.
-```
-
-The model does not add the probability below the negative root. No-real-root,
-two-positive-root, constant-region, and nonpositive-threshold cases are outside
-this registered model and raise an error.
+Linear limits use the appropriate upper or lower tail. Constant-sign,
+no-real-root, and double-root cases give the corresponding all-long or
+all-short probability (constant ties choose short). Valid regions are not
+rejected because a boundary is negative or because curvature changes sign.
 
 ## Analytical choice probability
 
 For a valid trial:
 
 ```text
-q[d,t] = P(X[d,t] > T | s[d,t])
-       = Phi((s[d,t] - T)/sigma[d,t]).
+X[d,t] | s[d,t] ~ Normal(s[d,t], w*s[d,t]² + s0²)
+q[d,t] = P(a2*X[d,t]² + a1*X[d,t] + a0 > 0 | s[d,t]).
 ```
 
-The computation uses the differentiable Torch standard-normal CDF and no Monte
-Carlo samples.
+The calculation is analytic. A single scalar coefficient set and vector CDFs
+serve all valid trials in an M0 session. Legacy positive-root helper functions
+remain available for historical checks but do not enter M0 prediction or fitting.
 
 ## Lapse mixture
 
@@ -270,7 +263,7 @@ kappa > 0
 
 All eight vectors must be unique, every parameter must span multiple values,
 every constrained-to-raw-to-constrained round trip must agree in `float64`, and
-every start must yield one finite positive threshold with the real task moments.
+every start must yield finite probabilities in [0,1] with the real task moments.
 
 ## Part V — software component registry
 
@@ -283,29 +276,21 @@ point for the complete component contract:
 | Parameter decoder | Raw `(w,s0,ell_short,ell_long,log_kappa)` to scientific values | `model/parameters.py` |
 | Fixed-neutral prior | Return exact `pi=0.5` without history inputs | `model/m0.py` |
 | Category likelihood | Calculate `v0`, `v1`, and `(a2,a1,a0)` | `model/bayesian.py` |
-| Decision solver | Structured unique-positive-threshold region | `model/bayesian.py` |
+| Decision solver | Shared full quadratic region | `model/m1_bayesian.py` |
 | Bayesian probability | Analytical `Phi((s-T)/sigma(s))` | `model/bayesian.py` |
 | Lapse mixture | Unclamped `(1-epsilon_t)q + epsilon_t/2` | `model/bayesian.py` |
 | Session evaluator | Independent session NLL and valid count | `model/session.py` |
 | Pooled objective | Decode once, sum session NLLs, normalize once | `model/session.py` |
 
-### Structured positive region
+### Structured full region
 
-The decision solver returns:
-
-```text
-threshold_s
-solver_regime
-long_region = "x > threshold"
-negative_root_policy = "discard"
-discriminant
-```
-
-No negative-root value is returned. Supported regimes are linear, quadratic
-with one simple positive root, and a positive quadratic double root. Two
-distinct positive roots, no real root, nonpositive thresholds, and constant
-regions raise because they do not satisfy this project's registered decision
-rule.
+Predictions expose `decision_lower_boundary_s`, `decision_upper_boundary_s`,
+and `decision_regime`. Trial CSVs prefix these names with `model_`.
+The historical `positive_threshold_s` / `model_positive_threshold_s` field is
+retained as an alias for the upper boundary, as in the context models. It does
+not imply an upper-tail action rule or a positive finite threshold. Linear
+regions may have an infinite endpoint; constant regions have NaN boundaries.
+Omitted rows retain NaN numerical diagnostics and `not_evaluated_invalid_choice`.
 
 ## Part VI — scientific documentation contract
 
@@ -319,8 +304,8 @@ also includes a Sphinx `.. math::` block. The executable audit is:
 python scripts/audit_scientific_documentation.py
 ```
 
-The decision-function documentation follows this project's positive-root-only
-override. It does not document or expose a two-root probability calculation.
+The active decision-function documentation describes the shared full-region
+calculation. Positive-root helper documentation describes legacy utilities only.
 
 ## Part VII — registered Adam and opt-in alternative optimization
 
@@ -416,18 +401,17 @@ output manifest.
 ## Part X — mandatory verification and recovery
 
 The test suite covers the reference category variances, log-odds coefficients,
-all raw-parameter transforms, positive-upper-root regimes, numerical quadrature,
-pooled-objective finite differences for all four raw parameters, neutral-prior
+all raw-parameter transforms, full decision regions, numerical quadrature,
+pooled-objective finite differences for all five raw parameters, neutral-prior
 restrictions, session-order invariance, omission masking, optimizer-step count,
 live NLL callbacks, leak-safe raw-file discovery, and synthetic recovery.
 
-The original PDF requested two-root, lower-threshold, and constant-region tests.
-Those regimes are tested as explicit errors because the user froze a modified
-positive-root-only model with the action rule `long iff X > T`. In particular,
-simple `a2 < 0` and negative-slope linear boundaries are rejected because using
-an upper-tail CDF there would silently reverse the mathematical decision region.
+Full-region regression tests cover both curvature signs, linear and constant
+limits, batched probabilities and gradients, masked rows, and agreement with
+the context-model readout at prior 0.5. Legacy positive-root rejection tests
+remain scoped to that historical helper, not the active M0 model.
 
-The four-case recovery report is
+The historical positive-root four-case recovery report is
 [`M0_sensory_v1_recovery.md`](M0_sensory_v1_recovery.md). It demonstrates low
 prediction-probability RMSE across low/high sensory noise and lapse conditions.
 Parameter ridges can exist even when the psychometric prediction is accurately recovered;
@@ -438,7 +422,7 @@ the recovery report now evaluates both category-specific lapse rates directly.
 The full runner saves one row per original trial to `trial_predictions.csv`.
 Non-decisions remain present with NaN model/NLL fields. Valid rows contain the
 mouse decision, deterministic M0 decision, `P(long)`, expected probability of a
-correct decision, per-trial NLL, sensory SD, positive threshold, and the five
+correct decision, per-trial NLL, sensory SD, full-region boundaries/regime, the compatibility threshold alias, and the five
 winning parameters. Original `RewardNaive` and `PunishNaive` labels remain even
 though they are modeled as reward and punishment.
 

@@ -6,3 +6,5 @@ raw_behavior_by_winner/results/
 *.pyc
 .ipynb_checkpoints/
 .codex-consult/
+.claude/
+tmp/

@@ -1,0 +1,73 @@
+{
+  "model_id": "Extended_WSLS_v1",
+  "table_version": "m0_directional_lapse_eight_starts_v3_plus_eight_learning_rates_v1",
+  "frozen": true,
+  "generation_policy": "pair_each_shared_M0_start_by_id_with_one_registered_learning_rate",
+  "parameter_order": ["ell_short", "ell_long", "a"],
+  "lapse_max": 1.0,
+  "m0_source": {
+    "file": "config/initializations/m0_sensory_v1_starts_ell100.json",
+    "table_version": "m0_directional_lapse_kappa_eight_starts_v3",
+    "sha256": "72cfa67383c52e261adab9d20feb441b31e4367ff3746a7de132c69e4b385480"
+  },
+  "learning_rate_assignment_policy": "start IDs 1-8 receive alpha in [0.02,0.05,0.1,0.2,0.35,0.5,0.7,0.9] respectively, identical to M1_stimulus_kernel_v1's own eight learning rates, spanning near-frozen (slow-integrating) to near-instantaneous (fast, noisy-tracking) history kernels; a=logit(alpha)",
+  "note": "Extended_WSLS has no sensory coordinate (no w/s0/kappa), so only M0's own ell_short/ell_long columns are reused here, unchanged, by start_id, each paired with one distinct learning-rate logit -- the same eight rows and the same eight learning rates M1_stimulus_kernel_v1 already uses, identical in spirit to how m1_hmm_true_v1's own initialization table pairs those same eight rows with eight varied hazards. This is a deliberate eight-point joint design for multi-start coverage, not a controlled one-parameter-at-a-time identifiability sweep (see M0's own initialization table note) -- lapse and learning rate are intentionally varied together across the eight starts, not crossed independently.",
+  "starts": [
+    {
+      "start_id": 1,
+      "ell_short": 0.03,
+      "ell_long": 0.03,
+      "a": -3.8918202981106265,
+      "purpose": "Symmetric reference lapse; alpha=0.02 (slow-integrating history kernel)"
+    },
+    {
+      "start_id": 2,
+      "ell_short": 0.135,
+      "ell_long": 0.015,
+      "a": -2.9444389791664403,
+      "purpose": "Higher short-category lapse; alpha=0.05"
+    },
+    {
+      "start_id": 3,
+      "ell_short": 0.0105,
+      "ell_long": 0.0195,
+      "a": -2.197224577336219,
+      "purpose": "Low asymmetric lapse; alpha=0.1"
+    },
+    {
+      "start_id": 4,
+      "ell_short": 0.224,
+      "ell_long": 0.056,
+      "a": -1.3862943611198906,
+      "purpose": "High short-category lapse; alpha=0.2"
+    },
+    {
+      "start_id": 5,
+      "ell_short": 0.002,
+      "ell_long": 0.008,
+      "a": -0.6190392084062235,
+      "purpose": "Near-zero category-specific lapses; alpha=0.35"
+    },
+    {
+      "start_id": 6,
+      "ell_short": 0.13,
+      "ell_long": 0.07,
+      "a": 0.0,
+      "purpose": "Moderate short-category lapse; alpha=0.5 (unbiased reference rate)"
+    },
+    {
+      "start_id": 7,
+      "ell_short": 0.036,
+      "ell_long": 0.324,
+      "a": 0.8472978603872034,
+      "purpose": "High long-category lapse; alpha=0.7"
+    },
+    {
+      "start_id": 8,
+      "ell_short": 0.098,
+      "ell_long": 0.002,
+      "a": 2.1972245773362196,
+      "purpose": "Short-category lapse with near-zero long lapse; alpha=0.9 (near-instantaneous, noisy-tracking kernel)"
+    }
+  ]
+}

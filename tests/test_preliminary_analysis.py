@@ -75,6 +75,13 @@ class PreliminaryAnalysisTests(unittest.TestCase):
         self.assertEqual(len(predictions), 32)
         omitted = predictions.loc[predictions["outcome"].eq("DidNotChoose")].iloc[0]
         self.assertFalse(omitted["model_evaluated"])
+        for name in ("model_decision_lower_boundary_s", "model_decision_upper_boundary_s"):
+            self.assertTrue(np.isnan(omitted[name]))
+        self.assertEqual(omitted["model_decision_regime"], "not_evaluated_invalid_choice")
+        np.testing.assert_allclose(
+            predictions["model_positive_threshold_s"],
+            predictions["model_decision_upper_boundary_s"], equal_nan=True,
+        )
         self.assertTrue(np.isnan(omitted["model_probability_long"]))
         self.assertEqual(set(predictions["trial_type"]), {"short", "long"})
 

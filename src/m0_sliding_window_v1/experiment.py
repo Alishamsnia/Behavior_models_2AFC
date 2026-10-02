@@ -467,6 +467,71 @@ def prepare_sliding_data(raw_data_root: str | Path, registry) -> PreparedSliding
     )
 
 
+def prepare_full_session_matched_data(
+    raw_data_root: str | Path, registry
+) -> PreparedSlidingData:
+    """Load chronological sessions without invoking the legacy block partition.
+
+    Rolling-window callers use each session's full timeline.  The stored
+    partition is the literal-final-two split needed later for matched-session
+    fine-tuning, so a valid three-block session is accepted and the terminal
+    block remains part of the held-out test portion.
+    """
+
+    assignments = pd.read_csv(registry.split.assignment_path).sort_values(
+        "chronological_rank", kind="mergesort"
+    ).reset_index(drop=True)
+    if assignments["mouse_id"].astype(str).nunique() != 1:
+        raise ValueError("A sliding run requires one mouse registry")
+    paths = _discover_paths(raw_data_root, assignments)
+    prepared = prepare_dataset(paths, require_legacy_isi_bins=True)
+    excluded = prepared.sessions.loc[
+        ~prepared.sessions["included_in_model_trials"].astype(bool), "session_id"
+    ].astype(str).tolist()
+    if excluded:
+        raise ValueError(
+            f"Registered included session failed model-trial filtering: {excluded[0]}"
+        )
+    expected = tuple(assignments["session_id"].astype(str))
+    observed = tuple(prepared.sessions["session_id"].astype(str))
+    if observed != expected:
+        raise ValueError("Prepared session order disagrees with chronological assignments")
+
+    partitioned: list[pd.DataFrame] = []
+    audits: list[pd.DataFrame] = []
+    partitions: dict[str, BlockPartition] = {}
+    for session_id in expected:
+        frame = prepared.canonical_trials.loc[
+            prepared.canonical_trials["session_id"].astype(str).eq(session_id)
+        ]
+        selected, partition, audit = partition_final_two_blocks(frame)
+        partitioned.append(selected)
+        audits.append(audit)
+        partitions[session_id] = partition
+    canonical = pd.concat(partitioned, ignore_index=True).merge(
+        assignments[["session_id", "chronological_rank"]],
+        on="session_id",
+        how="left",
+        validate="many_to_one",
+    )
+    return PreparedSlidingData(
+        mouse_id=str(assignments["mouse_id"].iloc[0]),
+        assignments=assignments,
+        canonical_trials=canonical.sort_values(
+            ["chronological_rank", "trial_index"]
+        ).reset_index(drop=True),
+        partitions=partitions,
+        block_audit=pd.concat(audits, ignore_index=True).merge(
+            assignments[["session_id", "chronological_rank"]],
+            on="session_id",
+            how="left",
+            validate="many_to_one",
+        ).sort_values(["chronological_rank", "block_index"]).reset_index(drop=True),
+        source_files=tuple(prepared.sessions["source_file"].astype(str)),
+        source_sha256=tuple(prepared.sessions["source_sha256"].astype(str)),
+    )
+
+
 def aggregate_session_initializations(
     assignments: pd.DataFrame,
     windows: Sequence[SlidingWindow],

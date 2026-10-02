@@ -1,0 +1,86 @@
+{
+  "model_id": "Pure_WSLS_v1",
+  "scientific_alias": "M_pure_wsls",
+  "registry_schema_version": "1.0",
+  "software_version": "0.1.0",
+  "implemented_scope": "no sensory evidence, no lapse-mixture change: pi_t is a scalar belief updated only from the previous trial's true category, with alpha fixed at exactly 1.0 (a literal win-stay/lose-shift-on-category rule); duration never enters prediction or likelihood eligibility",
+  "parameter_order": ["ell_short", "ell_long"],
+  "session_policy": "independent_dynamic_episode_reset_to_neutral",
+  "source_m0_registry": {
+    "file": "config/m0_sensory_v1.json",
+    "sha256": "557c5edb6b4085db1717b511587b4658681bc4d2088e311483b5f6a6eb9041d1"
+  },
+  "initial_pi": 0.5,
+  "stimulus_kernel": {
+    "update_rule": "pi_next_equals_category_exactly_alpha_fixed_at_one_not_a_finite_approximation",
+    "learning_rate_parameterization": "alpha_is_the_literal_python_float_1.0_never_a_fitted_coordinate",
+    "initial_prior": "pi_1_equals_one_half_every_session",
+    "feedback_gate": "update_applied_only_when_feedback_valid_is_true_else_pi_carries_forward_unchanged",
+    "prediction_uses_pre_update_pi": true,
+    "session_reset": "pi_resets_to_one_half_at_the_start_of_every_session_dynamic_state_never_crosses_a_session_boundary",
+    "hidden_state": "none_pi_t_is_itself_the_fitted_scalar_belief_not_a_function_of_a_discrete_state",
+    "hazard": "none_this_model_has_no_hazard_or_transition_kernel",
+    "sensory_readout": "none_this_model_has_no_duration_dependent_sensory_evidence_of_any_kind",
+    "fixed_category_rate_prototypes": "none_this_model_has_no_theta_lookup",
+    "interpretation": "pi_t_equals_the_previous_feedback_valid_trials_true_category_exactly_a_literal_win_stay_lose_shift_on_category_rule",
+    "category_emission_in_outer_objective": false,
+    "true_block_identity_predictive_input": false,
+    "true_switch_index_predictive_input": false
+  },
+  "initialization_table": {
+    "version": "m0_directional_lapse_eight_starts_v3_ell_short_ell_long_only_v1",
+    "file": "config/initializations/pure_wsls_v1_starts.json",
+    "sha256": "aa4d4d2cfc22df87a2d290855a0a13dca4283f06b38476e3da095599cf4a45c3",
+    "count": 8,
+    "generation_policy": "reuse_m0_own_eight_registered_ell_short_ell_long_rows_unchanged_by_start_id"
+  },
+  "convergence": {
+    "maximum_epochs": 2000,
+    "minimum_learning_rate": 1e-6,
+    "gradient_norm_tolerance": 1e-5,
+    "meaningful_improvement_tolerance": 1e-8,
+    "no_improvement_patience_epochs": 100,
+    "stable_training_window_epochs": 25,
+    "required_checks": [
+      "finite_objective",
+      "finite_parameters",
+      "finite_gradients",
+      "small_gradient_norm",
+      "stable_fresh_training_nll",
+      "no_parameter_transform_errors",
+      "no_optimizer_runtime_errors"
+    ],
+    "note": "Matches M0/M1_stimulus_kernel's own convergence tolerances; no_probability_normalization_errors is dropped because this evaluator has no renormalization step -- pi_t is exactly the previous feedback-valid category (or 0.5 before any feedback), so it is bounded in [0,1] by construction, and the evaluator additionally raises immediately if pi_t is ever non-finite (see wsls_core_v1/evaluator.py)."
+  },
+  "fitting": {
+    "lbfgs_maximum_steps": 250,
+    "lbfgs_learning_rate": 1.0,
+    "lbfgs_history_size": 10,
+    "lbfgs_maximum_evaluations_per_step": 20,
+    "lbfgs_tolerance_grad": 1e-9,
+    "lbfgs_tolerance_change": 1e-12,
+    "lbfgs_line_search_fn": "strong_wolfe",
+    "optional_adam_warmup_steps": 1000,
+    "optional_adam_learning_rate": 0.01
+  },
+  "multi_start_selection": {
+    "winner_criterion": "lowest_recalculated_best_training_mean_nll_among_converged_runs",
+    "near_equal_training_nll_tolerance": 1e-6,
+    "identifiability_parameter_distance_threshold": 0.25,
+    "parameter_distance_scale": [0.2, 1.0],
+    "additional_starts_policy": "report_need_only_never_generate_automatically",
+    "result_schema_version": "pure_wsls_fit_result_v1"
+  },
+  "metrics": {
+    "primary": ["elpd", "mean_nll_per_valid_trial"],
+    "secondary": ["brier_score", "classification_accuracy"],
+    "diagnostics": [
+      "calibration_curve",
+      "overall_psychometric_curve",
+      "per_session_mean_nll",
+      "trialwise_prior_long",
+      "trialwise_post_update_prior_long",
+      "current_category_by_previous_category_choice_matrix"
+    ]
+  }
+}
