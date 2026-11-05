@@ -52,6 +52,9 @@ class LoadedScores:
     model_ids: tuple[str, ...]
     test_ranks: np.ndarray
     trial_counts: np.ndarray
+    # Row counts of consecutive per-mouse chronologies stacked in ``matrix``
+    # (pooled analysis). None means one chronology -- the single-mouse case.
+    strata: tuple[int, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -91,13 +94,15 @@ def _holm_adjust(pvalues: np.ndarray) -> np.ndarray:
     return adjusted
 
 
-def _moving_block_indices(n: int, length: int, replicates: int) -> np.ndarray:
+def _moving_block_indices(n: int, length: int, replicates: int, stream: int | None = None) -> np.ndarray:
     if not 1 <= length < n:
         raise ValueError("block length must be between 1 and n-1")
     if replicates < 1:
         raise ValueError("replicates must be positive")
     blocks = int(np.ceil(n / length))
-    rng = np.random.default_rng(BASE_SEED + length)
+    # stream=None keeps the single-mouse seed; each pooled stratum gets its
+    # own independent stream so equal-length mice are not resampled in lockstep.
+    rng = np.random.default_rng(BASE_SEED + length if stream is None else [BASE_SEED, length, stream])
     starts = rng.integers(0, n - length + 1, size=(replicates, blocks))
     offsets = np.arange(length)
     return (starts[..., None] + offsets).reshape(replicates, -1)[:, :n]
@@ -115,6 +120,25 @@ def _moving_block_weights(n: int, length: int) -> np.ndarray:
         if remainder:
             weights[start:start + remainder] += 1 / (n * candidate_blocks)
     return weights
+
+
+def _stratified_block_indices(strata: tuple[int, ...], length: int, replicates: int) -> np.ndarray:
+    """Moving blocks drawn independently within each stratum (mouse); blocks
+    never cross a stratum boundary and each stratum keeps its own row count."""
+    parts, offset = [], 0
+    for stream, size in enumerate(strata):
+        parts.append(_moving_block_indices(size, length, replicates, stream=stream) + offset)
+        offset += size
+    return np.concatenate(parts, axis=1)
+
+
+def _expected_row_weights(n: int, length: int, strata: tuple[int, ...] | None = None) -> np.ndarray:
+    """Exact expected bootstrap weight of every row of the equal-session mean."""
+    if strata is None:
+        return _moving_block_weights(n, length)
+    if sum(strata) != n:
+        raise ValueError("strata sizes must sum to the number of rows")
+    return np.concatenate([_moving_block_weights(size, length) * size for size in strata]) / n
 
 
 def _acf(values: np.ndarray, max_lag: int = 7) -> np.ndarray:
@@ -219,8 +243,15 @@ def _load_scores(mouse_id: str) -> LoadedScores:
     )
 
 
-def _sampled_means(matrix: np.ndarray, length: int, replicates: int) -> np.ndarray:
-    indices = _moving_block_indices(len(matrix), length, replicates)
+def _sampled_means(
+    matrix: np.ndarray, length: int, replicates: int, strata: tuple[int, ...] | None = None,
+) -> np.ndarray:
+    if strata is None:
+        indices = _moving_block_indices(len(matrix), length, replicates)
+    else:
+        if sum(strata) != len(matrix):
+            raise ValueError("strata sizes must sum to the number of rows")
+        indices = _stratified_block_indices(strata, length, replicates)
     sampled = np.empty((replicates, matrix.shape[1]), dtype=float)
     for start in range(0, replicates, 2_000):
         stop = min(start + 2_000, replicates)
@@ -233,10 +264,11 @@ def _document_pair_results(
     model_ids: tuple[str, ...],
     length: int,
     replicates: int,
+    strata: tuple[int, ...] | None = None,
 ) -> tuple[list[PairResult], np.ndarray]:
-    sampled = _sampled_means(matrix, length, replicates)
+    sampled = _sampled_means(matrix, length, replicates, strata)
     observed_means = matrix.mean(axis=0)
-    expected_means = _moving_block_weights(len(matrix), length) @ matrix
+    expected_means = _expected_row_weights(len(matrix), length, strata) @ matrix
     temporary: list[dict] = []
     raw_values: list[float] = []
     for first_index, second_index in combinations(range(len(model_ids)), 2):
@@ -277,10 +309,11 @@ def _hybrid_pair_results(
     model_ids: tuple[str, ...],
     length: int,
     replicates: int,
+    strata: tuple[int, ...] | None = None,
 ) -> tuple[list[PairResult], np.ndarray]:
-    sampled = _sampled_means(matrix, length, replicates)
+    sampled = _sampled_means(matrix, length, replicates, strata)
     observed_means = matrix.mean(axis=0)
-    expected_means = _moving_block_weights(len(matrix), length) @ matrix
+    expected_means = _expected_row_weights(len(matrix), length, strata) @ matrix
     temporary: list[dict] = []
     raw_values: list[float] = []
     for first_index, second_index in combinations(range(len(model_ids)), 2):
@@ -378,10 +411,11 @@ def _ranking_panel(ax: plt.Axes, scores: LoadedScores) -> tuple[str, str]:
     ax.set_xlabel("Mean held-out NLL (nats/choice; lower is better)", fontsize=8)
     ax.grid(axis="x", color="#dddddd", linewidth=0.6)
     ax.set_title("A  Observed held-out ranking", loc="left", fontweight="bold", fontsize=9)
-    ax.text(
-        0.99, 0.01, "Hollow markers / dark-red names = oracle benchmarks",
-        transform=ax.transAxes, ha="right", va="bottom", fontsize=6.8,
-    )
+    if any(MODEL_BY_ID[model].oracle for model in scores.model_ids):
+        ax.text(
+            0.99, 0.01, "Hollow markers / dark-red names = oracle benchmarks",
+            transform=ax.transAxes, ha="right", va="bottom", fontsize=6.8,
+        )
     return scores.model_ids[order[0]], scores.model_ids[order[1]]
 
 
@@ -441,7 +475,7 @@ def _pair_matrix_panel(
     ax.text(
         0.0, -0.28,
         "Upper triangle only. Each cell: row advantage x1,000; Holm significance (* p<0.05); raw uncorrected p. "
-        "Positive favors the row; dark-red names are oracle models.",
+        "Positive favors the row" + ("; dark-red names are oracle models." if any(MODEL_BY_ID[m].oracle for m in model_ids) else "."),
         transform=ax.transAxes, fontsize=6.8, va="top",
     )
 
@@ -495,7 +529,7 @@ def _document_sensitivity_panel(
 ) -> None:
     rows = []
     for length in DOCUMENT_LENGTHS:
-        results, _ = _document_pair_results(scores.matrix, scores.model_ids, length, replicates)
+        results, _ = _document_pair_results(scores.matrix, scores.model_ids, length, replicates, scores.strata)
         row = _oriented_result(_result_lookup(results), leader, runner_up)
         rows.append((length, row))
     positions = np.arange(len(rows))
@@ -503,10 +537,11 @@ def _document_sensitivity_panel(
     low = np.asarray([row.ci95_low for _, row in rows])
     high = np.asarray([row.ci95_high for _, row in rows])
     ax.axhline(0, color="black", linewidth=0.8, linestyle="--")
-    ax.errorbar(
-        positions, observed, yerr=[observed - low, high - observed], fmt="o-",
-        color=MODEL_BY_ID[leader].color, capsize=3, lw=1,
-    )
+    # Percentile intervals need not contain the observed effect (edge shift at long L),
+    # so the interval is drawn on its own rather than as an error around the point.
+    color = MODEL_BY_ID[leader].color
+    ax.errorbar(positions, (low + high) / 2, yerr=(high - low) / 2, fmt="none", ecolor=color, capsize=3, lw=1)
+    ax.plot(positions, observed, "o-", color=color, lw=1)
     for position, (_, row) in zip(positions, rows):
         ax.annotate(
             f"pH={row.holm_p:.3g}\npR={row.raw_p:.3g}\nedge={row.edge_shift:+.4f}",
@@ -691,7 +726,7 @@ def _hybrid_sensitivity_panel(
 ) -> None:
     rows = []
     for length in HYBRID_LENGTHS:
-        results, _ = _hybrid_pair_results(scores.matrix, scores.model_ids, length, replicates)
+        results, _ = _hybrid_pair_results(scores.matrix, scores.model_ids, length, replicates, scores.strata)
         row = _oriented_result(_result_lookup(results), leader, runner_up)
         rows.append((length, row))
     positions = np.arange(len(rows))
@@ -753,7 +788,7 @@ def _hybrid_page(scores: LoadedScores, replicates: int, primary_length: int) -> 
     footer_ax.axis("off")
     footer_ax.text(
         0.5, 0.5,
-        f"W=30 sessions; equal-session weighting; all 13 models including 2 oracle benchmarks; B={replicates:,}; pairwise primary L={primary_length}; "
+        f"W=30 sessions; equal-session weighting; all 13 models including {sum(MODEL_BY_ID[m].oracle for m in scores.model_ids)} oracle benchmarks; B={replicates:,}; pairwise primary L={primary_length}; "
         "basic 95% CIs; two-sided null-centred tails; Holm family=78.\n"
         f"TOST L={EQUIVALENCE_BLOCK_LENGTH}, margin +/-0.005, 90% basic CIs, Holm family=12 post-selection leader contrasts. "
         "Within-mouse exploratory only; top two show neither superiority nor equivalence.",

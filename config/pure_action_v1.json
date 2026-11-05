@@ -1,0 +1,101 @@
+{
+  "model_id": "Pure_action_v1",
+  "scientific_alias": "M_pure_action",
+  "registry_schema_version": "1.0",
+  "software_version": "0.1.0",
+  "implemented_scope": "no sensory evidence: pi_t is a scalar action-history state equal to the mouse's own last valid choice, with alpha fixed at exactly 1.0 (a literal repeat-the-last-choice rule; actionSingle_lapse), mixed only with the category-dependent lapse; the action-driven sibling of Pure_WSLS_v1; duration never enters prediction or likelihood eligibility",
+  "parameter_order": [
+    "ell_short",
+    "ell_long"
+  ],
+  "session_policy": "independent_dynamic_episode_reset_to_neutral",
+  "source_m0_registry": {
+    "file": "config/m0_sensory_v1.json",
+    "sha256": "557c5edb6b4085db1717b511587b4658681bc4d2088e311483b5f6a6eb9041d1"
+  },
+  "initial_pi": 0.5,
+  "action_kernel": {
+    "update_rule": "pi_next_equals_choice_long_exactly_alpha_fixed_at_one_not_a_finite_approximation",
+    "learning_rate_parameterization": "alpha_is_the_literal_python_float_1.0_never_a_fitted_coordinate",
+    "interpretation": "pi_t_equals_the_mouse_own_last_valid_choice_exactly_a_literal_choice_repetition_rule_not_win_stay_lose_shift",
+    "initial_prior": "pi_1_equals_one_half_every_session",
+    "update_signal": "choice_long_the_mouse_own_long_short_action_never_the_true_category",
+    "update_gate": "update_applied_only_when_choice_long_is_finite_and_binary_independent_of_feedback_valid_category_validity_and_duration_validity_else_pi_carries_forward_unchanged",
+    "likelihood_gate": "valid_binary_choice_and_finite_binary_current_category_duration_never_read",
+    "prediction_uses_pre_update_pi": true,
+    "session_reset": "pi_resets_to_one_half_at_the_start_of_every_session_dynamic_state_never_crosses_a_session_boundary",
+    "hidden_state": "none_pi_t_is_itself_the_fitted_scalar_action_history_state_not_a_function_of_a_discrete_state",
+    "hazard": "none_this_model_has_no_hazard_or_transition_kernel",
+    "sensory_readout": "none_this_model_has_no_duration_dependent_sensory_evidence_of_any_kind",
+    "lapse": "category_dependent_ell_short_ell_long_keyed_on_the_true_current_category_identical_to_pure_wsls_v1_and_every_other_model",
+    "fixed_category_rate_prototypes": "none_this_model_has_no_theta_lookup",
+    "category_emission_in_outer_objective": false,
+    "true_block_identity_predictive_input": false,
+    "true_switch_index_predictive_input": false
+  },
+  "initialization_table": {
+    "version": "m0_directional_lapse_eight_starts_v3_ell_short_ell_long_only_v1",
+    "file": "config/initializations/pure_action_v1_starts.json",
+    "sha256": "edcbbb5aebb63c30198d850eba46c11628becce0549d8399d8f26649482bd666",
+    "count": 8,
+    "generation_policy": "reuse_m0_own_eight_registered_ell_short_ell_long_rows_unchanged_by_start_id"
+  },
+  "convergence": {
+    "maximum_epochs": 2000,
+    "minimum_learning_rate": 1e-06,
+    "gradient_norm_tolerance": 1e-05,
+    "meaningful_improvement_tolerance": 1e-08,
+    "no_improvement_patience_epochs": 100,
+    "stable_training_window_epochs": 25,
+    "required_checks": [
+      "finite_objective",
+      "finite_parameters",
+      "finite_gradients",
+      "small_gradient_norm",
+      "stable_fresh_training_nll",
+      "no_parameter_transform_errors",
+      "no_optimizer_runtime_errors"
+    ],
+    "note": "Matches M0/M1_stimulus_kernel's own convergence tolerances; no_probability_normalization_errors is dropped because this evaluator has no renormalization step -- pi_t is exactly the last valid choice (or 0.5 before any valid choice), so it is bounded in [0,1] by construction, and the evaluator additionally raises immediately if pi_t is ever non-finite (see action_core_v1/evaluator.py)."
+  },
+  "fitting": {
+    "lbfgs_maximum_steps": 250,
+    "lbfgs_learning_rate": 1.0,
+    "lbfgs_history_size": 10,
+    "lbfgs_maximum_evaluations_per_step": 20,
+    "lbfgs_tolerance_grad": 1e-09,
+    "lbfgs_tolerance_change": 1e-12,
+    "lbfgs_line_search_fn": "strong_wolfe",
+    "optional_adam_warmup_steps": 1000,
+    "optional_adam_learning_rate": 0.01
+  },
+  "multi_start_selection": {
+    "winner_criterion": "lowest_recalculated_best_training_mean_nll_among_converged_runs",
+    "near_equal_training_nll_tolerance": 1e-06,
+    "identifiability_parameter_distance_threshold": 0.25,
+    "parameter_distance_scale": [
+      0.2,
+      1.0
+    ],
+    "additional_starts_policy": "report_need_only_never_generate_automatically",
+    "result_schema_version": "pure_action_fit_result_v1"
+  },
+  "metrics": {
+    "primary": [
+      "elpd",
+      "mean_nll_per_valid_trial"
+    ],
+    "secondary": [
+      "brier_score",
+      "classification_accuracy"
+    ],
+    "diagnostics": [
+      "calibration_curve",
+      "overall_psychometric_curve",
+      "per_session_mean_nll",
+      "trialwise_prior_long",
+      "trialwise_post_update_prior_long",
+      "current_choice_by_previous_choice_matrix"
+    ]
+  }
+}

@@ -1,0 +1,112 @@
+{
+  "model_id": "M1_previous_wsls_bias_v1",
+  "scientific_alias": "M_previous_wsls_bias",
+  "descriptive_label": "sensory_wslsSingle_lapse",
+  "registry_schema_version": "1.0",
+  "software_version": "0.1.0",
+  "implemented_scope": "sensory_wslsSingle_lapse: M0's unchanged sensory-lapse readout with its fixed neutral prior, plus a previous-trial bias state mixed before lapse (eta-mixing, alpha fixed at 1); M2_dynamic_previous_wsls_bias_v1 with the HSMM removed (block prior replaced by the fixed 0.5)",
+  "parameter_order": [
+    "w",
+    "s0",
+    "ell_short",
+    "ell_long",
+    "kappa",
+    "eta_logit"
+  ],
+  "session_policy": "independent_dynamic_episode_reset_to_neutral",
+  "source_m0_registry": {
+    "file": "config/m0_sensory_v1.json",
+    "sha256": "557c5edb6b4085db1717b511587b4658681bc4d2088e311483b5f6a6eb9041d1"
+  },
+  "initial_pi": 0.5,
+  "prior_probability_epsilon": 1e-10,
+  "previous_bias": {
+    "update_signal": "category_long_the_true_category_never_the_mouse_own_action",
+    "update_gate": "update_applied_whenever_feedback_valid_is_true_independent_of_choice_validity_a_feedback_valid_omission_still_updates",
+    "interpretation": "pi_t_equals_the_last_feedback_valid_true_category_a_win_stay_lose_shift_bias",
+    "sensory_prior": "fixed_neutral_0.5_identical_to_m0_never_updated",
+    "bias_mixing": "m_t_equals_one_minus_eta_times_r_t_plus_eta_times_pi_t_applied_after_the_sensory_readout_and_before_the_lapse_mixture_identical_to_m2_dynamic_previous_bias_models",
+    "learning_rate": "alpha_fixed_at_exactly_1.0_update_is_exact_assignment_not_a_fitted_coordinate",
+    "eta_parameterization": "eta_equals_sigmoid_eta_logit_eta_logit_is_the_fitted_unconstrained_coordinate",
+    "initial_state": "pi_1_equals_one_half_every_session",
+    "prediction_uses_pre_update_state": true,
+    "session_reset": "pi_resets_to_one_half_at_the_start_of_every_session_dynamic_state_never_crosses_a_session_boundary",
+    "likelihood_gate": "finite_positive_duration_and_valid_binary_choice_and_finite_binary_current_category",
+    "lapse": "category_dependent_ell_short_ell_long_keyed_on_the_true_current_category_outermost_operation",
+    "hidden_state": "none",
+    "hazard": "none",
+    "why_not_prior_coupled": "feeding_a_fixed_alpha_state_in_0_1_into_the_bayesian_prior_saturates_the_readout_prior_clamped_to_1e-10_so_the_bias_is_mixed_into_the_output_instead",
+    "eta_zero_boundary": "reproduces_m0_sensory_v1_exactly_only_approached_by_the_free_logit"
+  },
+  "initialization_table": {
+    "version": "m0_directional_lapse_kappa_eight_starts_v3_plus_eight_bias_weights_v1",
+    "file": "config/initializations/m1_previous_wsls_bias_v1_starts.json",
+    "sha256": "16819f82e2a55bbfa859c48cd5ce45d2c82466a04975bf599546468acd0d50ac",
+    "count": 8,
+    "generation_policy": "pair_each_shared_M0_start_by_id_with_one_registered_eta_logit"
+  },
+  "convergence": {
+    "maximum_epochs": 2000,
+    "minimum_learning_rate": 1e-06,
+    "gradient_norm_tolerance": 1e-05,
+    "meaningful_improvement_tolerance": 1e-08,
+    "no_improvement_patience_epochs": 100,
+    "stable_training_window_epochs": 25,
+    "required_checks": [
+      "finite_objective",
+      "finite_parameters",
+      "finite_gradients",
+      "small_gradient_norm",
+      "stable_fresh_training_nll",
+      "no_parameter_transform_errors",
+      "no_optimizer_runtime_errors"
+    ],
+    "note": "Identical tolerances and checks to M1_action_kernel_v1/M1_stimulus_kernel_v1 (same fitter, same convergence escalation); no_probability_normalization_errors is dropped because there is no renormalized belief: pi_t is exactly a previous binary driver value (or 0.5), eta is a sigmoid convex weight, so every mixed probability lies in [0,1] by construction."
+  },
+  "fitting": {
+    "lbfgs_maximum_steps": 250,
+    "lbfgs_learning_rate": 1.0,
+    "lbfgs_history_size": 10,
+    "lbfgs_maximum_evaluations_per_step": 20,
+    "lbfgs_tolerance_grad": 1e-09,
+    "lbfgs_tolerance_change": 1e-12,
+    "lbfgs_line_search_fn": "strong_wolfe",
+    "optional_adam_warmup_steps": 1000,
+    "optional_adam_learning_rate": 0.01
+  },
+  "multi_start_selection": {
+    "winner_criterion": "lowest_recalculated_best_training_mean_nll_among_converged_runs",
+    "near_equal_training_nll_tolerance": 1e-06,
+    "identifiability_parameter_distance_threshold": 0.25,
+    "parameter_distance_scale": [
+      0.2,
+      1.2,
+      0.2,
+      1.0,
+      1.0,
+      2.0
+    ],
+    "additional_starts_policy": "report_need_only_never_generate_automatically",
+    "result_schema_version": "m1_previous_wsls_bias_fit_result_v1"
+  },
+  "metrics": {
+    "primary": [
+      "elpd",
+      "mean_nll_per_valid_trial"
+    ],
+    "secondary": [
+      "brier_score",
+      "classification_accuracy"
+    ],
+    "diagnostics": [
+      "calibration_curve",
+      "overall_psychometric_curve",
+      "per_session_mean_nll",
+      "trialwise_prior_long",
+      "trialwise_previous_wsls_state",
+      "trialwise_bias_mixed_probability_long",
+      "trialwise_decision_region_regime",
+      "fitted_bias_weight_eta"
+    ]
+  }
+}

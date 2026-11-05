@@ -397,11 +397,13 @@ def _per_trial_logits(model_id: str, window_id: int, timeline: pd.DataFrame, mom
     all (``"w" in parameter_names`` -- WSLS models don't), and
     ``belief_logit`` only if it has a block-structure prior (every model
     except M0, which has no belief/prior term to speak of). ``summation_logit``
-    is whichever of the two a model has, or their sum if it has both.
+    is whichever of the two a model has, or their sum if it has both. The
+    single-trial bias models (group ``m1_bias``) read out with a fixed 0.5
+    prior and mix the bias in afterwards, so like M0 they have no belief term.
     """
     spec = MODEL_BY_ID[model_id]
     has_sensory = "w" in spec.parameter_names
-    has_belief = spec.group != "m0"
+    has_belief = spec.group not in {"m0", "m1_bias"}
     evaluated = timeline.loc[_bool_mask(timeline.model_evaluated, "model_evaluated")].copy()
     if evaluated.empty:
         return evaluated.assign(sensory_logit=np.nan, belief_logit=np.nan, summation_logit=np.nan)
@@ -531,7 +533,8 @@ def _logit_psychometric_rows(per_trial: pd.DataFrame, model_id: str, window_id: 
         return []
     working = per_trial.copy()
     working["belief_probability"] = (
-        working["model_prior_long"] if "model_prior_long" in working.columns else np.nan
+        working["model_prior_long"].where(working["belief_logit"].notna())
+        if "model_prior_long" in working.columns else np.nan
     )
     working["summation_probability"] = working["model_probability_long"]
     working["model_id"] = model_id

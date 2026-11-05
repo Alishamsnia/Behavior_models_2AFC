@@ -24,12 +24,12 @@ EQUIVALENCE_MARGIN_NLL = 0.005
 # uncertainty analysis, including validation and test comparisons.
 EQUIVALENCE_BLOCK_LENGTH = EXPECTED_TRAIN_SESSIONS
 EQUIVALENCE_ALPHA = 0.05
-MODEL_FAMILY_ORDER = ("WSLS", "M0", "M1", "M2")
+MODEL_FAMILY_ORDER = ("WSLS", "Action", "M0", "M1", "M2")
 # Coarser than MODEL_FAMILY_ORDER: splits M1/M2 into the sub-clusters used to
 # assign one shared color per group (models within a group told apart by
 # linestyle instead) in the model-comparison figures, matching the visual
 # groupings (with gaps) in the figure legends.
-MODEL_GROUP_ORDER = ("wsls", "m0", "m1_history", "m1_switch", "m2_switch", "m2_bias")
+MODEL_GROUP_ORDER = ("wsls", "action", "m0", "m1_history", "m1_bias", "m2_switch", "m2_bias")
 # Seeds which windows, and which train/validation/test session within each,
 # Figure 20 samples for its per-trial sensory/belief logit trajectories --
 # fixed so the choice is stable across re-runs rather than changing every
@@ -63,29 +63,41 @@ class ExpandedModelSpec:
 # what makes the group palette apply everywhere.
 GROUP_COLOR = {
     "wsls": "#AA3377",
+    "action": "#EE7733",
     "m0": "#228833",
     "m1_history": "#4477AA",
-    "m1_switch": "#CCBB44",
+    "m1_bias": "#CCBB44",
     "m2_switch": "#EE6677",
     "m2_bias": "#66CCEE",
 }
 GROUP_LINE_STYLES = ("-", "--", ":")
 GROUP_MARKER_STYLES = ("o", "s", "^")
 
+# The four known-ratio / known-switch models (M1_known_switch, M1_hmm_true,
+# M1_dynamic_block_length, M2_known_switch) were dropped from this comparison
+# on 2026-10-29 and replaced by the action-only and single-trial sensory-bias
+# models below; their results folders are untouched.
 MODEL_SPECS = (
     ExpandedModelSpec("pure_wsls", "Pure_WSLS_v1", "wslsSingle_lapse", "wslsSingle_lapse", "WSLS", "wsls", ("ell_short", "ell_long"), GROUP_COLOR["wsls"]),
     ExpandedModelSpec("extended_wsls", "Extended_WSLS_v1", "wslsHistory_lapse", "wslsHistory_lapse", "WSLS", "wsls", ("ell_short", "ell_long", "a"), GROUP_COLOR["wsls"]),
+    ExpandedModelSpec("pure_action", "Pure_action_v1", "actionSingle_lapse", "actionSingle_lapse", "Action", "action", ("ell_short", "ell_long"), GROUP_COLOR["action"]),
+    ExpandedModelSpec("extended_action", "Extended_action_v1", "actionHistory_lapse", "actionHistory_lapse", "Action", "action", ("ell_short", "ell_long", "a"), GROUP_COLOR["action"]),
     ExpandedModelSpec("m0_sensory", "M0_sensory_v1", "sensory_lapse", "sensory_lapse", "M0", "m0", ("w", "s0", "ell_short", "ell_long", "kappa"), GROUP_COLOR["m0"]),
     ExpandedModelSpec("m1_action_kernel", "M1_action_kernel_v1", "sensory_actionHistory_lapse", "sensory_actionHistory_lapse", "M1", "m1_history", ("w", "s0", "ell_short", "ell_long", "kappa", "a"), GROUP_COLOR["m1_history"]),
     ExpandedModelSpec("m1_stimulus_kernel", "M1_stimulus_kernel_v1", "sensory_wslsHistory_lapse", "sensory_wslsHistory_lapse", "M1", "m1_history", ("w", "s0", "ell_short", "ell_long", "kappa", "a"), GROUP_COLOR["m1_history"]),
-    ExpandedModelSpec("m1_known_switch", "M1_known_switch_v1", "sensory_knownRatio_knownBlockSwitch_lapse", "sensory_knownRatio_knownBlockSwitch_lapse", "M1", "m1_switch", ("w", "s0", "ell_short", "ell_long", "kappa"), GROUP_COLOR["m1_switch"], True),
-    ExpandedModelSpec("m1_hmm_true", "M1_hmm_true_v1", "sensory_knownRatio_learnStaticBlockSwitch_lapse", "sensory_knownRatio_learnStaticBlockSwitch_lapse", "M1", "m1_switch", ("w", "s0", "ell_short", "ell_long", "kappa", "ah"), GROUP_COLOR["m1_switch"]),
-    ExpandedModelSpec("m1_dynamic", "M1_dynamic_block_length_v1", "sensory_knownRatio_learnDynamicBlockSwitch_lapse", "sensory_knownRatio_learnDynamicBlockSwitch_lapse", "M1", "m1_switch", ("w", "s0", "ell_short", "ell_long", "kappa", "ah", "bh"), GROUP_COLOR["m1_switch"]),
-    ExpandedModelSpec("m2_known_switch", "M2_known_switch_v1", "sensory_learnRatio_knownBlockSwitch_lapse", "sensory_learnRatio_knownBlockSwitch_lapse", "M2", "m2_switch", ("w", "s0", "ell_short", "ell_long", "kappa", "delta0"), GROUP_COLOR["m2_switch"], True),
+    ExpandedModelSpec("m1_previous_action_bias", "M1_previous_action_bias_v1", "sensory_actionSingle_lapse", "sensory_actionSingle_lapse", "M1", "m1_bias", ("w", "s0", "ell_short", "ell_long", "kappa", "eta_logit"), GROUP_COLOR["m1_bias"]),
+    ExpandedModelSpec("m1_previous_wsls_bias", "M1_previous_wsls_bias_v1", "sensory_wslsSingle_lapse", "sensory_wslsSingle_lapse", "M1", "m1_bias", ("w", "s0", "ell_short", "ell_long", "kappa", "eta_logit"), GROUP_COLOR["m1_bias"]),
     ExpandedModelSpec("m2_static", "M2_hmm_static_v1", "sensory_learnRatio_learnStaticBlockSwitch_lapse", "sensory_learnRatio_learnStaticBlockSwitch_lapse", "M2", "m2_switch", ("w", "s0", "ell_short", "ell_long", "kappa", "ah", "delta0"), GROUP_COLOR["m2_switch"]),
     ExpandedModelSpec("m2_dynamic", "M2_dynamic_block_length_v1", "sensory_learnRatio_learnDynamicBlockSwitch_lapse", "sensory_learnRatio_learnDynamicBlockSwitch_lapse", "M2", "m2_switch", ("w", "s0", "ell_short", "ell_long", "kappa", "ah", "delta0", "bh"), GROUP_COLOR["m2_switch"]),
     ExpandedModelSpec("m2_dynamic_wsls_bias", "M2_dynamic_previous_wsls_bias_v1", "sensory_learnRatio_learnDynamicBlockSwitch_wslsSingle_lapse", "sensory_learnRatio_learnDynamicBlockSwitch_wslsSingle_lapse", "M2", "m2_bias", ("w", "s0", "ell_short", "ell_long", "kappa", "ah", "delta0", "bh", "eta_logit"), GROUP_COLOR["m2_bias"]),
     ExpandedModelSpec("m2_dynamic_repetition_bias", "M2_dynamic_previous_action_bias_v1", "sensory_learnRatio_learnDynamicBlockSwitch_actionSingle_lapse", "sensory_learnRatio_learnDynamicBlockSwitch_actionSingle_lapse", "M2", "m2_bias", ("w", "s0", "ell_short", "ell_long", "kappa", "ah", "delta0", "bh", "eta_logit"), GROUP_COLOR["m2_bias"]),
+)
+# Placeholder for models whose sliding-window fits are still running. They are
+# NOT part of MODEL_SPECS, so no collection, table, or figure sees them; move a
+# spec into MODEL_SPECS (after the m2_bias entries) once every mouse's windows
+# are complete.
+PENDING_MODEL_SPECS = (
+    ExpandedModelSpec("m2_dynamic_action_kernel_bias", "M2_dynamic_action_kernel_bias_v1", "sensory_learnRatio_learnDynamicBlockSwitch_actionHistory_lapse", "sensory_learnRatio_learnDynamicBlockSwitch_actionHistory_lapse", "M2", "m2_bias", ("w", "s0", "ell_short", "ell_long", "kappa", "ah", "delta0", "bh", "eta_logit", "a"), GROUP_COLOR["m2_bias"]),
 )
 MODEL_BY_ID = {spec.model_id: spec for spec in MODEL_SPECS}
 MODEL_ORDER = tuple(spec.model_id for spec in MODEL_SPECS)
@@ -105,6 +117,14 @@ def group_style(model_id: str, kind: str = "line") -> str:
     group = MODEL_BY_ID[model_id].group
     members = [m for m in MODEL_ORDER if MODEL_BY_ID[m].group == group]
     return styles[members.index(model_id) % len(styles)]
+
+
+def has_sensory_term(model_id: str) -> bool:
+    """False for the choice-history-only models (WSLS and Action families),
+    whose near-deterministic predictions dominate any shared axis and are
+    therefore left out of the zoomed comparison panels.
+    """
+    return "w" in MODEL_BY_ID[model_id].parameter_names
 
 
 def validate_mouse_id(mouse_id: str) -> str:

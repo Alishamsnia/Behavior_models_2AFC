@@ -25,6 +25,7 @@ from .config import (
     MODEL_ORDER,
     SPLIT_ROLES,
     group_style,
+    has_sensory_term,
     validate_mouse_id,
 )
 
@@ -97,10 +98,10 @@ def _eligibility_text(equivalence: pd.DataFrame, status: pd.DataFrame) -> str:
     ]
     shown = equivalence["model_id"].nunique()
     incomplete_text = ", ".join(incomplete) if incomplete else "none"
-    return (
-        f"{shown} deployable models shown; {completed_oracles} completed known-switch oracle "
-        f"benchmarks excluded; incomplete: {incomplete_text}."
+    oracle_text = (
+        f"{completed_oracles} completed known-switch oracle benchmarks excluded; " if completed_oracles else ""
     )
+    return f"{shown} deployable models shown; {oracle_text}incomplete: {incomplete_text}."
 
 
 def _build_figure00_rankings(rankings: pd.DataFrame, status: pd.DataFrame) -> plt.Figure:
@@ -146,12 +147,14 @@ def _build_figure00_rankings(rankings: pd.DataFrame, status: pd.DataFrame) -> pl
         ax.set_xlim(lower - x_padding, upper + 5 * x_padding)
         ax.grid(axis="x", alpha=0.25)
     fig.suptitle(
-        f"Figure 0 — MC08 sliding-window fit: observed order by mean NLL\n{_provisional_text(status)}; open diamonds and (O) denote oracle benchmarks",
+        f"Figure 0 — sliding-window fit: observed order by mean NLL\n{_provisional_text(status)}"
+        + ("; open diamonds and (O) denote oracle benchmarks" if rankings["oracle_benchmark"].astype(bool).any() else ""),
         y=0.975,
     )
     fig.text(
         0.5, 0.025,
-        "n=30 overlapping windows from one mouse. Moving-block bootstrap: block length 5, 5,000 resamples. P(best) includes oracle models; train/validation are diagnostics, test is primary descriptive comparison.",
+        f"n={int(status['expected_windows'].iloc[0])} overlapping windows from one mouse. Moving-block bootstrap: block length 5, 5,000 resamples. "
+        "P(best) includes every compared model; train/validation are diagnostics, test is primary descriptive comparison.",
         ha="center", fontsize=8,
     )
     fig.tight_layout(rect=(0, 0.06, 1, 0.86))
@@ -163,7 +166,7 @@ def _figure00_ci_page(equivalence: pd.DataFrame, status: pd.DataFrame) -> plt.Fi
     all_ci = np.r_[equivalence["ci95_lower"].to_numpy(float), equivalence["ci95_upper"].to_numpy(float)]
     full_padding = 0.04 * (all_ci.max() - all_ci.min())
     full_limits = (all_ci.min() - full_padding, all_ci.max() + full_padding)
-    close = equivalence[~equivalence["family"].eq("WSLS")]
+    close = equivalence[equivalence["model_id"].map(has_sensory_term)]
     close_ci = np.r_[close["ci95_lower"].to_numpy(float), close["ci95_upper"].to_numpy(float)]
     zoom_extent = max(abs(close_ci.min()), abs(close_ci.max())) * 1.15
     reference_id = equivalence["reference_model_id"].iloc[0]
@@ -175,7 +178,7 @@ def _figure00_ci_page(equivalence: pd.DataFrame, status: pd.DataFrame) -> plt.Fi
         )
         for row, (subset, scope) in enumerate((
             (split, "All deployable families"),
-            (split[~split["family"].eq("WSLS")], "M0/M1/M2 zoom"),
+            (split[split["model_id"].map(has_sensory_term)], "M0/M1/M2 zoom"),
         )):
             ax = axes[row, column]
             subset = subset.iloc[::-1].reset_index(drop=True)
@@ -497,7 +500,7 @@ def _figure00_combined_selection_page(
     )
     fig.text(
         0.5, 0.018,
-        "Lower NLL is better. Known-switch oracle benchmarks are excluded from selection. "
+        "Lower NLL is better. Only deployable (non-oracle) models enter selection. "
         "Exploratory, conditional-on-selection result for one mouse; not population-level confirmation.",
         ha="center", fontsize=8.8,
     )
@@ -602,7 +605,7 @@ def _stars(p: float) -> str:
 
 def figure03_pairwise(pairwise: pd.DataFrame, status: pd.DataFrame, figures_dir: Path) -> None:
     eligible = _eligible_order(status)
-    zoom_models = tuple(model for model in eligible if model not in {"pure_wsls", "extended_wsls"})
+    zoom_models = tuple(model for model in eligible if has_sensory_term(model))
     fig, axes = plt.subplots(2, 3, figsize=(26, 18))
     full_maximum = max(abs(pairwise["mean_diff_a_minus_b"]).max(), 1e-6)
     zoom_pairs = pairwise[pairwise["model_a"].isin(zoom_models) & pairwise["model_b"].isin(zoom_models)]
@@ -610,7 +613,7 @@ def figure03_pairwise(pairwise: pd.DataFrame, status: pd.DataFrame, figures_dir:
     last_images = []
     for row_index, (models, maximum, row_name) in enumerate((
         (eligible, full_maximum, "All eligible models"),
-        (zoom_models, zoom_maximum, "Non-WSLS zoom"),
+        (zoom_models, zoom_maximum, "Sensory-model zoom (no WSLS/Action)"),
     )):
         for ax, split_role in zip(axes[row_index], SPLIT_ROLES):
             matrix = np.full((len(models), len(models)), np.nan)
@@ -640,9 +643,9 @@ def figure03_pairwise(pairwise: pd.DataFrame, status: pd.DataFrame, figures_dir:
     full_bar = fig.colorbar(last_images[0], cax=full_axis, orientation="horizontal")
     zoom_bar = fig.colorbar(last_images[3], cax=zoom_axis, orientation="horizontal")
     full_bar.set_label("All-model ΔNLL")
-    zoom_bar.set_label("Non-WSLS zoom ΔNLL")
+    zoom_bar.set_label("Sensory-model zoom ΔNLL")
     fig.suptitle(
-        f"All pairwise model differences — {_provisional_text(status)}\nUpper triangle: row−column mean NLL ×1,000 (blue/negative = row better); (O)=oracle",
+        f"All pairwise model differences — {_provisional_text(status)}\nUpper triangle: row−column mean NLL ×1,000 (blue/negative = row better)",
         y=1.02,
     )
     state = "provisional; " if _provisional_text(status).startswith("PROVISIONAL") else ""
@@ -704,10 +707,10 @@ EXPECTED_OFFSET = 12
 
 def figure06_information_criteria(summary: pd.DataFrame, status: pd.DataFrame, figures_dir: Path) -> None:
     eligible = _eligible_order(status)
-    non_wsls = tuple(model for model in eligible if model not in {"pure_wsls", "extended_wsls"})
+    non_wsls = tuple(model for model in eligible if has_sensory_term(model))
     fig, axes = plt.subplots(2, 2, figsize=(15, 10))
     all_models = summary[summary["ranking_scope"].eq("all_models")].set_index("model_id").reindex(eligible)
-    for row_index, (models, row_label) in enumerate(((eligible, "All eligible models"), (non_wsls, "Non-WSLS zoom"))):
+    for row_index, (models, row_label) in enumerate(((eligible, "All eligible models"), (non_wsls, "Sensory-model zoom (no WSLS/Action)"))):
         table = all_models.reindex(models)
         for ax, metric, title in zip(axes[row_index], ("mean_delta_aic", "mean_delta_bic"), ("AIC", "BIC")):
             bars = ax.bar(range(len(models)), table[metric], color=[MODEL_BY_ID[m].color for m in models])

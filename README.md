@@ -1466,3 +1466,31 @@ M2/M3/M4's `--rolling-threads-per-worker` must be lowered from its default of
 32-CPU budget guard rejects the run (`4 windows x 8 workers x 4 threads = 128
 > 32`). M0/M1 have no such hard guard; keep the product of all three
 multipliers within your machine's thread budget manually.
+
+## Five additional models (action / previous-trial bias family)
+
+Added alongside the 13 registered models, which are unchanged. Each has its
+own package, sliding-window package, runner, three subject configs, frozen
+eight-start table, and equations document under `docs/models/`.
+
+| Model id | Label | Parameters | Built from |
+|---|---|---|---|
+| `Pure_action_v1` | `actionSingle_lapse` | `ell_short, ell_long` | `Pure_WSLS_v1`, driven by the last valid choice |
+| `Extended_action_v1` | `actionHistory_lapse` | `+ a` | `Extended_WSLS_v1`, driven by valid choices |
+| `M1_previous_action_bias_v1` | `sensory_actionSingle_lapse` | M0's five `+ eta_logit` | `M2_dynamic_previous_action_bias_v1` without the HSMM |
+| `M1_previous_wsls_bias_v1` | `sensory_wslsSingle_lapse` | M0's five `+ eta_logit` | `M2_dynamic_previous_wsls_bias_v1` without the HSMM |
+| `M2_dynamic_action_kernel_bias_v1` | `sensory_learnRatio_learnDynamicBlockSwitch_actionHistory_lapse` | parent's nine `+ a` | `M2_dynamic_previous_action_bias_v1` with alpha fitted |
+
+All five use the standard full-session-matched 9/3/1 sliding windows, eight
+frozen starts, L-BFGS, the sibling model's convergence checks, and the
+32-CPU budget. A window with no converged start is saved as `no_winner` and
+the run continues; resolve such windows afterwards with
+`extra_tools/forced_best_train_nll.py` (runner keys `pure_action`,
+`extended_action`, `previous_action_bias`, `previous_wsls_bias`,
+`action_kernel_bias`). `scripts/run_five_new_models.sh` drives both phases
+for MC06/MC07/MC08:
+
+```bash
+bash scripts/run_five_new_models.sh fit     # phase 1: fit every model x mouse (one job at a time, 32 threads)
+bash scripts/run_five_new_models.sh force   # phase 2: force lowest-train-NLL start for no-winner windows, then resume
+```
