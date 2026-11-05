@@ -200,8 +200,9 @@ def _event_ranking_panel(
     )
     ax.text(
         0.99, 0.01,
-        "Overlapping intervals are not distinguishable here -- see panel B for pairwise evidence.\n"
-        "Hollow markers / dark-red names = oracle benchmarks.",
+        "Overlapping intervals are not distinguishable here -- see panel B for pairwise evidence."
+        + ("\nHollow markers / dark-red names = oracle benchmarks."
+           if any(MODEL_BY_ID[model].oracle for model in model_ids) else ""),
         transform=ax.transAxes, ha="right", va="bottom", fontsize=7.4, linespacing=1.4,
     )
 

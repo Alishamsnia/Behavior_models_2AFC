@@ -8,3 +8,5 @@ raw_behavior_by_winner/results/
 .codex-consult/
 .claude/
 tmp/
+extra_tools_output/
+logs/

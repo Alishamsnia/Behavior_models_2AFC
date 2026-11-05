@@ -12,7 +12,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.colors import TwoSlopeNorm
 from scipy.stats import rankdata
 
-from .config import MODEL_BY_ID, MODEL_ORDER, SPLIT_ROLES, group_style
+from .config import MODEL_BY_ID, MODEL_ORDER, SPLIT_ROLES, group_style, has_sensory_term
 from .extended_collect import DURATION_BIN_DEFINITIONS
 
 FIGURE_IDS = tuple(f"fig{number:02d}" for number in range(7, 25))
@@ -588,15 +588,15 @@ def _figure20_event_page(events, models, legend_handles, event_names, event_span
                         lw=1.2, zorder=3)
                 ax.fill_between(p.index, p["mean"] - sem, p["mean"] + sem,
                                 color=MODEL_BY_ID[model].color, alpha=0.05, zorder=2)
-                if MODEL_BY_ID[model].group != "wsls":
+                if has_sensory_term(model):
                     lower, upper = (p["mean"] - sem).min(), (p["mean"] + sem).max()
                     if pd.notna(lower) and pd.notna(upper):
                         non_wsls_bounds.append((lower, upper))
             ax.axvline(0, color="black", ls="--", lw=0.7)
             if channel_col != "mean_sensory_logit" and non_wsls_bounds:
-                # Same rationale as pages 1-2: WSLS's near-deterministic
+                # Same rationale as pages 1-2: WSLS/Action near-deterministic
                 # belief swings the visible range far past every other
-                # model's -- scale to the non-WSLS models instead.
+                # model's -- scale to the sensory models instead.
                 lo, hi = min(b[0] for b in non_wsls_bounds), max(b[1] for b in non_wsls_bounds)
                 pad = 0.1 * max(hi - lo, 1e-6)
                 ax.set_ylim(lo - pad, hi + pad)
@@ -725,12 +725,12 @@ def figure20(logit_samples, logit_events, logit_psychometrics, status, output):
                     )
                 ax.set_xlim(*xlim)
                 if column != "sensory_logit":
-                    # WSLS's near-deterministic P(long) sends logit(pi_t) to +-20-30,
+                    # WSLS/Action near-deterministic P(long) sends logit(pi_t) to +-20-30,
                     # dwarfing the O(1-10) belief swings of every other model -- scale
-                    # the visible range to the non-WSLS models so those stay legible;
-                    # WSLS is still drawn, just clipped where it exceeds this range.
+                    # the visible range to the sensory models so those stay legible;
+                    # they are still drawn, just clipped where it exceeds this range.
                     non_wsls = row_data.loc[
-                        row_data.model_id.map(lambda m: MODEL_BY_ID[m].group != "wsls"), column,
+                        row_data.model_id.map(has_sensory_term), column,
                     ].dropna()
                     if len(non_wsls):
                         lo, hi = float(non_wsls.min()), float(non_wsls.max())
@@ -811,7 +811,7 @@ _CONDITION_COLORS = {"hard_own": "#E15759", "easy_own": "#4E79A7", "hard_next": 
 
 def _sensory_family(status: pd.DataFrame) -> tuple[str, ...]:
     """Eligible models with a Bayesian sensory/prior decomposition at all
-    -- excludes Pure/Extended WSLS, which have no sensory readout."""
+    -- excludes the WSLS and Action models, which have no sensory readout."""
     return tuple(m for m in _eligible(status) if "w" in MODEL_BY_ID[m].parameter_names)
 
 
@@ -901,7 +901,7 @@ def figure24(bins_table: pd.DataFrame, difficulty_table: pd.DataFrame, status: p
     from the prior vs. the sensory evidence, per Bayesian-family model.
     Page 2: whether that prior is stronger on hard (near-boundary) trials
     than easy (far-from-boundary) trials, own-trial and on the very next
-    trial. WSLS models have no sensory/prior decomposition and are excluded.
+    trial. WSLS and Action models have no sensory/prior decomposition and are excluded.
     """
     models = tuple(m for m in _sensory_family(status) if m in set(bins_table.model_id))
     state_text = _state(status)

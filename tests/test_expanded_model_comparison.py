@@ -95,7 +95,7 @@ class ExpandedModelComparisonTests(unittest.TestCase):
         self.assertEqual(len(set(MODEL_ORDER)), 13)
         self.assertIn("m1_stimulus_kernel", MODEL_ORDER)
         self.assertIn("M1_stimulus_kernel_v1", [spec.directory for spec in MODEL_SPECS])
-        self.assertEqual(sum(spec.oracle for spec in MODEL_SPECS), 2)
+        self.assertEqual(sum(spec.oracle for spec in MODEL_SPECS), 0)
         self.assertIn("M2_dynamic_previous_wsls_bias_v1", [spec.directory for spec in MODEL_SPECS])
         self.assertIn("M2_dynamic_previous_action_bias_v1", [spec.directory for spec in MODEL_SPECS])
         self.assertEqual({spec.family for spec in MODEL_SPECS}, set(MODEL_FAMILY_ORDER))
@@ -158,14 +158,14 @@ class ExpandedModelComparisonTests(unittest.TestCase):
 
     def test_block_bootstrap_tost_and_family_summary_identify_equivalence_set(self):
         rows = []
-        models = ("extended_wsls", "m0_sensory", "m1_hmm_true")
+        models = ("extended_wsls", "m0_sensory", "m1_previous_action_bias")
         for split_role in ("train", "validation", "test"):
             for window_id in range(1, 21):
                 base = 0.45 + 0.01 * np.sin(window_id / 3)
                 for model_id, offset in (
                     ("extended_wsls", 0.020),
                     ("m0_sensory", 0.001),
-                    ("m1_hmm_true", 0.000),
+                    ("m1_previous_action_bias", 0.000),
                 ):
                     rows.append({
                         "split_role": split_role,
@@ -177,20 +177,20 @@ class ExpandedModelComparisonTests(unittest.TestCase):
             pd.DataFrame(rows), models, replicates=499, block_length=3,
         )
         test = table[table["split_role"].eq("test")].set_index("model_id")
-        self.assertEqual(test.loc["m1_hmm_true", "reference_model_id"], "m1_hmm_true")
+        self.assertEqual(test.loc["m1_previous_action_bias", "reference_model_id"], "m1_previous_action_bias")
         self.assertTrue(bool(test.loc["m0_sensory", "equivalent_holm"]))
         self.assertFalse(bool(test.loc["extended_wsls", "equivalent_holm"]))
         self.assertGreater(test.loc["extended_wsls", "tost_p_holm_within_split"], 0.05)
         family = stats.family_summary_table(table).set_index("family")
-        self.assertEqual(family.loc["M1", "family_best_model_id"], "m1_hmm_true")
+        self.assertEqual(family.loc["M1", "family_best_model_id"], "m1_previous_action_bias")
         self.assertEqual(family.loc["M2", "eligible_deployable_models"], 0)
 
     def test_combined_selection_gates_total_fit_and_uses_six_event_conditions(self):
-        models = ("m1_hmm_true", "m1_dynamic", "m2_static")
+        models = ("m1_previous_action_bias", "m1_previous_wsls_bias", "m2_static")
         metric_rows = []
         event_rows = []
-        total_offsets = {"m1_hmm_true": 0.0, "m1_dynamic": 0.020, "m2_static": 0.002}
-        event_offsets = {"m1_hmm_true": 0.0, "m1_dynamic": 0.002, "m2_static": -0.002}
+        total_offsets = {"m1_previous_action_bias": 0.0, "m1_previous_wsls_bias": 0.020, "m2_static": 0.002}
+        event_offsets = {"m1_previous_action_bias": 0.0, "m1_previous_wsls_bias": 0.002, "m2_static": -0.002}
         for window_id in range(1, 21):
             for model in models:
                 metric_rows.append({
@@ -216,7 +216,7 @@ class ExpandedModelComparisonTests(unittest.TestCase):
                         for relative_position in range(-5, 6):
                             weighting_probe = (
                                 0.1
-                                if model == "m1_hmm_true"
+                                if model == "m1_previous_action_bias"
                                 and event == "short_to_long"
                                 and trial_type == "short"
                                 and relative_position == 5
@@ -240,17 +240,17 @@ class ExpandedModelComparisonTests(unittest.TestCase):
             expected_event_window_ids=tuple(range(1, 20)),
         )
         indexed = summary.set_index("model_id")
-        self.assertFalse(bool(indexed.loc["m1_dynamic", "passes_total_noninferiority"]))
-        self.assertTrue(bool(indexed.loc["m1_hmm_true", "passes_total_noninferiority"]))
+        self.assertFalse(bool(indexed.loc["m1_previous_wsls_bias", "passes_total_noninferiority"]))
+        self.assertTrue(bool(indexed.loc["m1_previous_action_bias", "passes_total_noninferiority"]))
         self.assertTrue(bool(indexed.loc["m2_static", "passes_total_noninferiority"]))
         self.assertEqual(indexed.loc["m2_static", "event_n_windows"], 19)
         self.assertTrue(bool(indexed.loc["m2_static", "observed_combined_winner"]))
-        self.assertTrue(bool(indexed.loc["m1_hmm_true", "event_equivalent_holm"]))
+        self.assertTrue(bool(indexed.loc["m1_previous_action_bias", "event_equivalent_holm"]))
         self.assertTrue(bool(indexed.loc["m2_static", "prevalence_weighted_event_winner"]))
         self.assertEqual(domains["event_domain"].nunique(), 6)
         self.assertEqual(len(domains), len(models) * 6)
         weighted_probe = domains[
-            domains["model_id"].eq("m1_hmm_true")
+            domains["model_id"].eq("m1_previous_action_bias")
             & domains["event_domain"].eq("short_to_long_short_trials")
         ].iloc[0]
         self.assertAlmostEqual(weighted_probe["mean_nll"], 0.50 + 0.6 / 41)
@@ -295,7 +295,7 @@ class ExpandedModelComparisonTests(unittest.TestCase):
             )
 
     def test_combined_selection_reports_exact_event_ties_as_co_winners(self):
-        models = ("m1_hmm_true", "m2_static")
+        models = ("m1_previous_action_bias", "m2_static")
         metrics = pd.DataFrame([
             {"model_id": model, "window_id": window, "split_role": "test", "mean_nll": 0.45}
             for window in range(1, 4) for model in models
